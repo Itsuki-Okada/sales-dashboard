@@ -4,9 +4,10 @@ import {
   Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import {
-  Search, Plus, MoreHorizontal, ChevronDown, ChevronRight, X,
+  Search, Plus, MoreHorizontal, ChevronDown, ChevronRight, ChevronLeft, X,
   LayoutDashboard, BarChart3, CalendarDays, Star, Bell, Settings,
   Trash2, Pencil, CheckCircle2, XCircle, Clock3, ArrowRight,
+  TrendingUp, TrendingDown, Building2,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -28,6 +29,37 @@ const CONF_HINT = { 1: "可能性低め", 2: "五分五分", 3: "可能性が高
 function monthLabel(m) {
   const [y, mo] = m.split("-");
   return `${y}年${parseInt(mo, 10)}月`;
+}
+
+function yearOf(m) {
+  return m.slice(0, 4);
+}
+
+// 会社名の50音絞り込み用ユーティリティ。
+// 「株式会社」などの法人格を除いた先頭文字がどの行に属するかを判定する。
+const KANA_ROWS = {
+  あ: "あいうえおアイウエオ",
+  か: "かきくけこがぎぐげごカキクケコガギグゲゴ",
+  さ: "さしすせそざじずぜぞサシスセソザジズゼゾ",
+  た: "たちつてとだぢづでどタチツテトダヂヅデド",
+  な: "なにぬねのナニヌネノ",
+  は: "はひふへほばびぶべぼぱぴぷぺぽハヒフヘホバビブベボパピプペポ",
+  ま: "まみむめもマミムメモ",
+  や: "やゆよゃゅょヤユヨャュョ",
+  ら: "らりるれろラリルレロ",
+  わ: "わをんゔヴわゐゑワヲンヴ",
+};
+
+function companyDisplayName(name) {
+  return name.replace(/^(株式会社|有限会社|合同会社)/, "");
+}
+
+function companyKanaRow(name) {
+  const first = companyDisplayName(name)[0] || "";
+  for (const [row, chars] of Object.entries(KANA_ROWS)) {
+    if (chars.includes(first)) return row;
+  }
+  return "他";
 }
 
 function addMonths(m, n) {
@@ -114,6 +146,15 @@ const PROJECT_NAMES = {
 
 const BASE_AMOUNT = { WEB: 800000, グラフィック: 300000, 動画: 600000, AI: 1500000, SNS: 200000 };
 
+const CONTACT_FAMILY_NAMES = ["田中", "鈴木", "佐藤", "高橋", "伊藤", "渡辺", "山本", "中村", "小林", "加藤"];
+
+function contactFor(idx) {
+  return {
+    contactName: `${CONTACT_FAMILY_NAMES[idx % CONTACT_FAMILY_NAMES.length]} 様`,
+    contactEmail: `contact${idx}@example.co.jp`,
+  };
+}
+
 function roundTo10k(n) {
   return Math.round(n / 10000) * 10000;
 }
@@ -137,6 +178,7 @@ function seedProjects() {
         const estimatedAmount = roundTo10k(BASE_AMOUNT[cat] * (1 + (((clientIdx % 5) - 2) * 0.15)));
         const confirmedAmount =
           status === "won" ? roundTo10k(estimatedAmount * (0.9 + (clientIdx % 3) * 0.05)) : null;
+        const contact = contactFor(clientIdx);
         const created = new Date(2026, 7 + mi, 1 + ((clientIdx * 3) % 25)).toISOString();
         list.push({
           id: uid(),
@@ -149,7 +191,11 @@ function seedProjects() {
           assignee,
           estimatedAmount,
           confirmedAmount,
+          contactName: contact.contactName,
+          contactEmail: contact.contactEmail,
           memo: "",
+          progressNotes: [],
+          archived: false,
           createdAt: created,
           updatedAt: created,
           history: [
@@ -177,6 +223,58 @@ function seedProjects() {
     });
   });
   return list.slice(0, 24);
+}
+
+// 昨年(2025年)との比較用に、各社の過去実績をアーカイブ案件として生成する。
+// archived: true の案件はダッシュボード本体（案件ボード）には表示されず、
+// 「年別売上」「会社一覧」ページの実績比較にのみ使われる。
+function seedArchivedProjects() {
+  const list = [];
+  CLIENT_NAMES.forEach((client, ci) => {
+    const dealCount = 2 + (ci % 3); // 会社ごとに2〜4件
+    for (let d = 0; d < dealCount; d++) {
+      const monthIndex = (ci * 3 + d * 4) % 12;
+      const month = `2025-${String(monthIndex + 1).padStart(2, "0")}`;
+      const cat = CATEGORIES[(ci + d) % CATEGORIES.length];
+      const name = PROJECT_NAMES[cat][(ci + d) % PROJECT_NAMES[cat].length];
+      const assignee = ASSIGNEES[(ci + d) % ASSIGNEES.length];
+      const estimatedAmount = roundTo10k(BASE_AMOUNT[cat] * (1 + (((ci + d) % 5 - 2) * 0.15)));
+      const status = (ci + d) % 4 === 3 ? "lost" : "won";
+      const confirmedAmount = status === "won" ? roundTo10k(estimatedAmount * (0.9 + ((ci + d) % 3) * 0.05)) : null;
+      const contact = contactFor(ci * 7 + d);
+      const created = new Date(2025, monthIndex, 10).toISOString();
+      list.push({
+        id: uid(),
+        name,
+        clientName: client,
+        category: cat,
+        scheduledMonth: month,
+        confidence: ((ci + d) % 3) + 1,
+        status,
+        assignee,
+        estimatedAmount,
+        confirmedAmount,
+        contactName: contact.contactName,
+        contactEmail: contact.contactEmail,
+        memo: "",
+        progressNotes: [],
+        archived: true,
+        createdAt: created,
+        updatedAt: created,
+        history: [
+          { id: uid(), date: created, type: "created", label: "新規登録", scheduledMonth: month },
+          {
+            id: uid(),
+            date: created,
+            type: status,
+            label: status === "won" ? "受注" : "ロスト",
+            previousStatus: "active",
+          },
+        ],
+      });
+    }
+  });
+  return list;
 }
 
 /* ------------------------------------------------------------------ */
@@ -447,6 +545,8 @@ function ProjectForm({ initial, onSubmit, onCancel }) {
       confidence: 2,
       assignee: ASSIGNEES[0],
       estimatedAmount: "",
+      contactName: "",
+      contactEmail: "",
       memo: "",
     }
   );
@@ -475,6 +575,27 @@ function ProjectForm({ initial, onSubmit, onCancel }) {
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
           placeholder="例）株式会社◯◯"
         />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs font-medium text-slate-500">先方ご担当者名</label>
+          <input
+            value={form.contactName}
+            onChange={(e) => setForm({ ...form, contactName: e.target.value })}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            placeholder="例）田中 様"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-500">先方メールアドレス</label>
+          <input
+            type="email"
+            value={form.contactEmail}
+            onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            placeholder="例）tanaka@example.co.jp"
+          />
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -515,7 +636,7 @@ function ProjectForm({ initial, onSubmit, onCancel }) {
         </div>
       </div>
       <div>
-        <label className="text-xs font-medium text-slate-500">担当者</label>
+        <label className="text-xs font-medium text-slate-500">自社担当者</label>
         <div className="mt-1 flex gap-2">
           {ASSIGNEES.map((a) => (
             <button
@@ -671,8 +792,20 @@ function WonDialogInner({ project, onClose, onConfirm }) {
 /* 案件詳細ドロワー                                                     */
 /* ------------------------------------------------------------------ */
 
-function ProjectDetail({ project, onClose, onAction }) {
+function ProjectDetail({ project, onClose, onAction, onAddNote }) {
   if (!project) return null;
+  return (
+    <ProjectDetailInner
+      project={project}
+      onClose={onClose}
+      onAction={onAction}
+      onAddNote={onAddNote}
+    />
+  );
+}
+
+function ProjectDetailInner({ project, onClose, onAction, onAddNote }) {
+  const [noteText, setNoteText] = useState("");
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/40">
       <div className="h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl">
@@ -704,8 +837,16 @@ function ProjectDetail({ project, onClose, onAction }) {
               <div className="mt-1 font-medium text-slate-700">{monthLabel(project.scheduledMonth)}</div>
             </div>
             <div>
-              <div className="text-xs text-slate-400">担当者</div>
+              <div className="text-xs text-slate-400">自社担当者</div>
               <div className="mt-1 font-medium text-slate-700">{project.assignee}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-400">先方ご担当者</div>
+              <div className="mt-1 font-medium text-slate-700">{project.contactName || "—"}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-400">先方メールアドレス</div>
+              <div className="mt-1 break-all font-medium text-slate-700">{project.contactEmail || "—"}</div>
             </div>
             <div>
               <div className="text-xs text-slate-400">見込み金額</div>
@@ -748,6 +889,45 @@ function ProjectDetail({ project, onClose, onAction }) {
               </button>
             </div>
           )}
+
+          <div className="mt-6">
+            <div className="mb-2 text-xs font-semibold text-slate-400">進行状況メモ</div>
+            <div className="flex gap-2">
+              <input
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="進捗を記録する（例：先方に見積送付済み）"
+                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && noteText.trim()) {
+                    onAddNote(noteText.trim());
+                    setNoteText("");
+                  }
+                }}
+              />
+              <button
+                disabled={!noteText.trim()}
+                onClick={() => {
+                  onAddNote(noteText.trim());
+                  setNoteText("");
+                }}
+                className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+              >
+                追加
+              </button>
+            </div>
+            <ul className="mt-3 flex flex-col gap-2">
+              {(!project.progressNotes || project.progressNotes.length === 0) && (
+                <li className="text-sm text-slate-400">まだ進行状況メモはありません</li>
+              )}
+              {[...(project.progressNotes || [])].reverse().map((n) => (
+                <li key={n.id} className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                  <div>{n.text}</div>
+                  <div className="mt-1 text-xs text-slate-400">{fmtDate(n.date)}</div>
+                </li>
+              ))}
+            </ul>
+          </div>
 
           <div className="mt-6">
             <div className="mb-2 text-xs font-semibold text-slate-400">案件履歴</div>
@@ -985,6 +1165,322 @@ function AnalysisPage({ projects }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 年別売上比率ページ                                                    */
+/* ------------------------------------------------------------------ */
+
+function YoyBadge({ yoy }) {
+  if (yoy === null || yoy === undefined) return <span className="text-slate-400">—</span>;
+  const up = yoy >= 0;
+  return (
+    <span className={`inline-flex items-center gap-1 font-medium ${up ? "text-emerald-600" : "text-rose-600"}`}>
+      {up ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+      {up ? "+" : ""}{yoy}%
+    </span>
+  );
+}
+
+function YearlyRevenuePage({ projects }) {
+  const years = Array.from(new Set(projects.map((p) => yearOf(p.scheduledMonth)))).sort();
+
+  const rows = years.map((y, i) => {
+    const list = projects.filter((p) => yearOf(p.scheduledMonth) === y);
+    const c = computeCounts(list);
+    const prevYear = years[i - 1];
+    const prevRevenue = prevYear
+      ? computeCounts(projects.filter((p) => yearOf(p.scheduledMonth) === prevYear)).confirmedTotal
+      : null;
+    const yoy =
+      prevRevenue && prevRevenue > 0
+        ? Math.round(((c.confirmedTotal - prevRevenue) / prevRevenue) * 1000) / 10
+        : null;
+    return { year: y, ...c, yoy };
+  });
+
+  const chartData = rows.map((r) => ({ 年: `${r.year}年`, 確定金額: Math.round(r.confirmedTotal / 10000) }));
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {rows.map((r) => (
+          <div key={r.year} className="rounded-2xl border border-slate-100 bg-white p-5">
+            <div className="text-xs font-medium text-slate-400">{r.year}年 確定金額</div>
+            <div className="mt-2 text-2xl font-semibold tabular-nums text-slate-900">
+              {formatManYen(r.confirmedTotal)}
+            </div>
+            <div className="mt-1 text-xs">
+              前年比：<YoyBadge yoy={r.yoy} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border border-slate-100 bg-white p-5">
+        <div className="mb-3 text-sm font-semibold text-slate-800">年別 確定金額（万円）</div>
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+            <XAxis dataKey="年" tick={{ fontSize: 12, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 12, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+            <Tooltip formatter={(v) => `${v.toLocaleString("ja-JP")}万円`} />
+            <Bar dataKey="確定金額" fill="#6366F1" radius={[6, 6, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="rounded-2xl border border-slate-100 bg-white p-5">
+        <div className="mb-3 text-sm font-semibold text-slate-800">年別サマリー</div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-slate-400">
+              <th className="py-2 font-medium">年</th>
+              <th className="py-2 font-medium">案件数</th>
+              <th className="py-2 font-medium">受注</th>
+              <th className="py-2 font-medium">ロスト</th>
+              <th className="py-2 font-medium">受注率</th>
+              <th className="py-2 font-medium">確定金額</th>
+              <th className="py-2 font-medium">前年比</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.year} className="border-t border-slate-50">
+                <td className="py-2 font-medium text-slate-800">{r.year}年</td>
+                <td className="py-2 tabular-nums">{r.total}</td>
+                <td className="py-2 tabular-nums text-emerald-600">{r.won}</td>
+                <td className="py-2 tabular-nums text-rose-600">{r.lost}</td>
+                <td className="py-2 tabular-nums font-medium">{r.rate ?? "—"}{r.rate !== null ? "%" : ""}</td>
+                <td className="py-2 tabular-nums text-emerald-600">{formatManYen(r.confirmedTotal)}</td>
+                <td className="py-2"><YoyBadge yoy={r.yoy} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 会社一覧ページ                                                       */
+/* ------------------------------------------------------------------ */
+
+function CompanyListPage({ projects, onOpenDetail }) {
+  const companies = useMemo(
+    () => Array.from(new Set(projects.map((p) => p.clientName))).sort((a, b) => a.localeCompare(b, "ja")),
+    [projects]
+  );
+  const [selected, setSelected] = useState(null);
+  const [listOpen, setListOpen] = useState(true);
+  const [search, setSearch] = useState("");
+  const [kanaFilter, setKanaFilter] = useState("全て");
+
+  const q = search.trim().toLowerCase();
+  const visibleCompanies = companies.filter((name) => {
+    if (kanaFilter !== "全て" && companyKanaRow(name) !== kanaFilter) return false;
+    if (!q) return true;
+    if (name.toLowerCase().includes(q)) return true;
+    // 案件名でも検索できるようにする
+    return projects.some((p) => p.clientName === name && p.name.toLowerCase().includes(q));
+  });
+
+  function selectCompany(name) {
+    setSelected(name);
+    setListOpen(false);
+  }
+
+  const companyProjects = projects.filter((p) => p.clientName === selected);
+  const overall = computeCounts(companyProjects);
+
+  const monthsSet = Array.from(new Set(companyProjects.map((p) => p.scheduledMonth))).sort();
+  const monthlyRows = monthsSet.map((m) => {
+    const list = companyProjects.filter((p) => p.scheduledMonth === m);
+    return { month: m, ...computeCounts(list) };
+  });
+
+  const years = Array.from(new Set(companyProjects.map((p) => yearOf(p.scheduledMonth)))).sort();
+  const yearlyRows = years.map((y, i) => {
+    const list = companyProjects.filter((p) => yearOf(p.scheduledMonth) === y);
+    const c = computeCounts(list);
+    const prevYear = years[i - 1];
+    const prevRevenue = prevYear
+      ? computeCounts(companyProjects.filter((p) => yearOf(p.scheduledMonth) === prevYear)).confirmedTotal
+      : null;
+    const yoy =
+      prevRevenue && prevRevenue > 0
+        ? Math.round(((c.confirmedTotal - prevRevenue) / prevRevenue) * 1000) / 10
+        : null;
+    return { year: y, ...c, yoy };
+  });
+
+  const sortedProjects = [...companyProjects].sort((a, b) => (a.scheduledMonth < b.scheduledMonth ? 1 : -1));
+
+  return (
+    <div className="flex flex-col gap-4">
+      {listOpen && (
+        <div className="rounded-2xl border border-slate-100 bg-white p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="会社名・案件名で検索"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-2 text-sm focus:border-indigo-300 focus:bg-white focus:outline-none"
+              />
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {["全て", "あ", "か", "さ", "た", "な", "は", "ま", "や", "ら", "わ"].map((row) => (
+              <button
+                key={row}
+                onClick={() => setKanaFilter(row)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                  kanaFilter === row
+                    ? "bg-indigo-600 text-white"
+                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                }`}
+              >
+                {row}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 grid max-h-[50vh] grid-cols-1 gap-0.5 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+            {visibleCompanies.map((name) => (
+              <button
+                key={name}
+                onClick={() => selectCompany(name)}
+                className="truncate rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50"
+              >
+                {name}
+              </button>
+            ))}
+            {visibleCompanies.length === 0 && (
+              <div className="col-span-full px-3 py-2 text-sm text-slate-400">該当する会社がありません</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!listOpen && selected && (
+        <>
+          <button
+            onClick={() => setListOpen(true)}
+            className="flex w-fit items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50"
+          >
+            <ChevronLeft size={16} />
+            会社一覧に戻る
+          </button>
+
+          <div className="flex items-center gap-2">
+            <Building2 size={18} className="text-indigo-500" />
+            <div className="text-lg font-semibold text-slate-900">{selected}</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <KpiCard label="案件数" value={overall.total} />
+            <KpiCard label="受注率" value={overall.rate ?? "—"} suffix={overall.rate !== null ? "%" : ""} accent="text-indigo-600" />
+            <KpiCard label="見込み金額" value={formatManYen(overall.estimatedTotal)} accent="text-amber-600" />
+            <KpiCard label="確定金額(累計)" value={formatManYen(overall.confirmedTotal)} accent="text-emerald-600" />
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 bg-white p-5">
+            <div className="mb-3 text-sm font-semibold text-slate-800">年別売上・昨年比</div>
+            {yearlyRows.length === 0 ? (
+              <div className="text-sm text-slate-400">データがありません</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-400">
+                    <th className="py-2 font-medium">年</th>
+                    <th className="py-2 font-medium">受注率</th>
+                    <th className="py-2 font-medium">確定金額</th>
+                    <th className="py-2 font-medium">前年比</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {yearlyRows.map((r) => (
+                    <tr key={r.year} className="border-t border-slate-50">
+                      <td className="py-2 font-medium text-slate-800">{r.year}年</td>
+                      <td className="py-2 tabular-nums">{r.rate ?? "—"}{r.rate !== null ? "%" : ""}</td>
+                      <td className="py-2 tabular-nums text-emerald-600">{formatManYen(r.confirmedTotal)}</td>
+                      <td className="py-2"><YoyBadge yoy={r.yoy} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 bg-white p-5">
+            <div className="mb-3 text-sm font-semibold text-slate-800">月別受注率</div>
+            {monthlyRows.length === 0 ? (
+              <div className="text-sm text-slate-400">データがありません</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-400">
+                    <th className="py-2 font-medium">月</th>
+                    <th className="py-2 font-medium">案件数</th>
+                    <th className="py-2 font-medium">受注</th>
+                    <th className="py-2 font-medium">ロスト</th>
+                    <th className="py-2 font-medium">受注率</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyRows.map((r) => (
+                    <tr key={r.month} className="border-t border-slate-50">
+                      <td className="py-2 font-medium text-slate-800">{monthLabel(r.month)}</td>
+                      <td className="py-2 tabular-nums">{r.total}</td>
+                      <td className="py-2 tabular-nums text-emerald-600">{r.won}</td>
+                      <td className="py-2 tabular-nums text-rose-600">{r.lost}</td>
+                      <td className="py-2 tabular-nums font-medium">{r.rate ?? "—"}{r.rate !== null ? "%" : ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 bg-white p-5">
+            <div className="mb-3 text-sm font-semibold text-slate-800">案件一覧</div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-400">
+                    <th className="py-2 font-medium">案件</th>
+                    <th className="py-2 font-medium">内容</th>
+                    <th className="py-2 font-medium">月</th>
+                    <th className="py-2 font-medium">状態</th>
+                    <th className="py-2 font-medium">金額</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedProjects.map((p) => (
+                    <tr
+                      key={p.id}
+                      className="cursor-pointer border-t border-slate-50 hover:bg-slate-50/60"
+                      onClick={() => onOpenDetail && onOpenDetail(p)}
+                    >
+                      <td className="max-w-[200px] truncate py-2 font-medium text-slate-800">{p.name}</td>
+                      <td className="py-2"><CategoryPill category={p.category} /></td>
+                      <td className="py-2 whitespace-nowrap text-slate-500">{monthLabel(p.scheduledMonth)}</td>
+                      <td className="py-2"><StatusBadge status={p.status} /></td>
+                      <td className="py-2 tabular-nums text-slate-600">
+                        {p.status === "won" ? formatManYen(p.confirmedAmount) : formatManYen(p.estimatedAmount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* 月別状況ページ                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -1039,7 +1535,7 @@ function MonthlyPage({ projects }) {
 /* ------------------------------------------------------------------ */
 
 export default function App() {
-  const [projects, setProjects] = useState(seedProjects);
+  const [projects, setProjects] = useState(() => [...seedProjects(), ...seedArchivedProjects()]);
   const [view, setView] = useState("dashboard");
   const [activeCategory, setActiveCategory] = useState("全体");
   const [search, setSearch] = useState("");
@@ -1050,7 +1546,9 @@ export default function App() {
   const [wonTarget, setWonTarget] = useState(null);
   const [lostTarget, setLostTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [detail, setDetail] = useState(null);
+  const [detailId, setDetailId] = useState(null);
+  const detail = projects.find((p) => p.id === detailId) || null;
+  const setDetail = (p) => setDetailId(p ? p.id : null);
 
   function pushToast(message) {
     const id = uid();
@@ -1058,8 +1556,10 @@ export default function App() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2500);
   }
 
+  const boardProjects = useMemo(() => projects.filter((p) => !p.archived), [projects]);
+
   const filtered = useMemo(() => {
-    return projects.filter((p) => {
+    return boardProjects.filter((p) => {
       if (activeCategory !== "全体" && p.category !== activeCategory) return false;
       if (search.trim()) {
         const q = search.trim().toLowerCase();
@@ -1072,7 +1572,7 @@ export default function App() {
       }
       return true;
     });
-  }, [projects, activeCategory, search]);
+  }, [boardProjects, activeCategory, search]);
 
   const kpi = computeCounts(filtered);
   const months = useMemo(() => {
@@ -1082,7 +1582,7 @@ export default function App() {
 
   const thisMonthKey = "2026-09";
   const thisMonthList = filtered.filter((p) => p.scheduledMonth === thisMonthKey);
-  const thisMonthPostponed = projects.reduce(
+  const thisMonthPostponed = boardProjects.reduce(
     (acc, p) =>
       acc + p.history.filter((h) => h.type === "postponed" && h.fromMonth === thisMonthKey).length,
     0
@@ -1163,6 +1663,13 @@ export default function App() {
     setDeleteTarget(null);
   }
 
+  function addProgressNote(project, text) {
+    updateProject(project.id, {
+      progressNotes: [...(project.progressNotes || []), { id: uid(), date: todayIso(), text }],
+    });
+    pushToast("進行状況メモを追加しました");
+  }
+
   function saveNewProject(form) {
     const now = todayIso();
     setProjects((list) => [
@@ -1173,6 +1680,8 @@ export default function App() {
         estimatedAmount: Number(form.estimatedAmount) || 0,
         confirmedAmount: null,
         status: "active",
+        progressNotes: [],
+        archived: false,
         createdAt: now,
         updatedAt: now,
         history: [{ id: uid(), date: now, type: "created", label: "新規登録", scheduledMonth: form.scheduledMonth }],
@@ -1192,6 +1701,8 @@ export default function App() {
     { key: "dashboard", label: "ダッシュボード", icon: LayoutDashboard },
     { key: "analysis", label: "受注率分析", icon: BarChart3 },
     { key: "monthly", label: "月別状況", icon: CalendarDays },
+    { key: "yearly", label: "年別売上", icon: TrendingUp },
+    { key: "companies", label: "会社一覧", icon: Building2 },
   ];
 
   return (
@@ -1344,13 +1855,25 @@ export default function App() {
 
           {view === "analysis" && (
             <div className="mx-auto max-w-6xl">
-              <AnalysisPage projects={projects} />
+              <AnalysisPage projects={boardProjects} />
             </div>
           )}
 
           {view === "monthly" && (
             <div className="mx-auto max-w-4xl">
-              <MonthlyPage projects={projects} />
+              <MonthlyPage projects={boardProjects} />
+            </div>
+          )}
+
+          {view === "yearly" && (
+            <div className="mx-auto max-w-5xl">
+              <YearlyRevenuePage projects={projects} />
+            </div>
+          )}
+
+          {view === "companies" && (
+            <div className="mx-auto max-w-6xl">
+              <CompanyListPage projects={projects} onOpenDetail={setDetail} />
             </div>
           )}
         </main>
@@ -1397,7 +1920,14 @@ export default function App() {
         tone="danger"
       />
 
-      {detail && <ProjectDetail project={detail} onClose={() => setDetail(null)} onAction={handleAction} />}
+      {detail && (
+        <ProjectDetail
+          project={detail}
+          onClose={() => setDetail(null)}
+          onAction={handleAction}
+          onAddNote={(text) => addProgressNote(detail, text)}
+        />
+      )}
 
       <Toast toasts={toasts} />
     </div>
