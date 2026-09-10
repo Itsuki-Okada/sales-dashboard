@@ -350,6 +350,7 @@ function ActionMenu({ project, onAction }) {
     { key: "won", label: "受注にする", show: project.status === "active" },
     { key: "postpone", label: "時期変更する", show: project.status === "active" },
     { key: "lost", label: "ロストにする", show: project.status === "active" },
+    { key: "quote", label: project.quoteSubmitted ? "再見積もり提出" : "見積提出", show: project.status === "active" },
     { key: "delivered", label: "納品済みにする", show: project.status === "won" },
     { key: "edit", label: "編集", show: true },
     { key: "delete", label: "削除", show: true, danger: true },
@@ -833,10 +834,83 @@ function WonDialogInner({ project, onClose, onConfirm }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 見積提出ダイアログ                                                    */
+/* ------------------------------------------------------------------ */
+
+function QuoteDialog({ project, onClose, onConfirm }) {
+  if (!project) return null;
+  return <QuoteDialogInner project={project} onClose={onClose} onConfirm={onConfirm} />;
+}
+
+function QuoteDialogInner({ project, onClose, onConfirm }) {
+  const isResubmit = !!project.quoteSubmitted;
+  const [amount, setAmount] = useState(project.quotedAmount ?? project.estimatedAmount ?? "");
+  const [date, setDate] = useState(todayDateStr());
+  const valid = amount !== "" && Number(amount) >= 0 && date;
+  return (
+    <Modal open={!!project} onClose={onClose} title={isResubmit ? "再見積もり提出" : "見積提出"} width="max-w-sm">
+      <p className="text-sm text-slate-500">
+        「{project.name}」の{isResubmit ? "再見積もり" : "見積"}金額と提出日を入力してください。
+      </p>
+      {isResubmit && (
+        <div className="mt-3 text-xs text-slate-400">
+          前回の提出：{fmtDate(project.quoteSubmittedAt)} ・ {formatYen(project.quotedAmount)}
+        </div>
+      )}
+      <div className="mt-3">
+        <label className="text-xs font-medium text-slate-500">見積金額</label>
+        <div className="relative mt-1">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">¥</span>
+          <input
+            type="number"
+            min="0"
+            step="10000"
+            autoFocus
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 py-2 pl-7 pr-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            placeholder="例）800000"
+          />
+        </div>
+      </div>
+      <div className="mt-3">
+        <label className="text-xs font-medium text-slate-500">提出日</label>
+        <div className="mt-1 flex items-center gap-2">
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+          />
+          <button
+            onClick={() => setDate(todayDateStr())}
+            className="whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100"
+          >
+            今日
+          </button>
+        </div>
+      </div>
+      <div className="mt-6 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+          キャンセル
+        </button>
+        <button
+          disabled={!valid}
+          onClick={() => onConfirm(Number(amount), date)}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+        >
+          {isResubmit ? "再提出を記録" : "提出を記録"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* 案件詳細ドロワー                                                     */
 /* ------------------------------------------------------------------ */
 
-function ProjectDetail({ project, onClose, onAction, onAddNote, onSetDeliveryDate, onSetQuoteSubmitted, onSetQuoteDate, relatedVisits }) {
+function ProjectDetail({ project, onClose, onAction, onAddNote, onSetDeliveryDate, relatedVisits }) {
   if (!project) return null;
   return (
     <ProjectDetailInner
@@ -845,14 +919,12 @@ function ProjectDetail({ project, onClose, onAction, onAddNote, onSetDeliveryDat
       onAction={onAction}
       onAddNote={onAddNote}
       onSetDeliveryDate={onSetDeliveryDate}
-      onSetQuoteSubmitted={onSetQuoteSubmitted}
-      onSetQuoteDate={onSetQuoteDate}
       relatedVisits={relatedVisits}
     />
   );
 }
 
-function ProjectDetailInner({ project, onClose, onAction, onAddNote, onSetDeliveryDate, onSetQuoteSubmitted, onSetQuoteDate, relatedVisits }) {
+function ProjectDetailInner({ project, onClose, onAction, onAddNote, onSetDeliveryDate, relatedVisits }) {
   const [noteText, setNoteText] = useState("");
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/40">
@@ -930,31 +1002,16 @@ function ProjectDetailInner({ project, onClose, onAction, onAddNote, onSetDelive
           {project.status === "active" && (
             <div className="mt-5 flex flex-col gap-3">
               <div className="flex flex-col gap-2 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={!!project.quoteSubmitted}
-                    onChange={(e) => onSetQuoteSubmitted(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"
-                  />
-                  <FileCheck size={15} className="text-slate-400" />
-                  見積提出済み
-                </label>
+                <button
+                  onClick={() => onAction("quote", project)}
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-white py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50"
+                >
+                  <FileCheck size={15} />
+                  {project.quoteSubmitted ? "再見積もり提出" : "見積提出"}
+                </button>
                 {project.quoteSubmitted && (
-                  <div className="flex items-center gap-2 pl-6">
-                    <label className="whitespace-nowrap text-xs text-slate-500">提出日</label>
-                    <input
-                      type="date"
-                      value={project.quoteSubmittedAt ? project.quoteSubmittedAt.slice(0, 10) : ""}
-                      onChange={(e) => onSetQuoteDate(e.target.value)}
-                      className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                    />
-                    <button
-                      onClick={() => onSetQuoteDate(todayDateStr())}
-                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                    >
-                      今日
-                    </button>
+                  <div className="text-center text-xs text-slate-400">
+                    直近の提出：{fmtDate(project.quoteSubmittedAt)} ・ {formatYen(project.quotedAmount)}
                   </div>
                 )}
               </div>
@@ -1088,6 +1145,12 @@ function ProjectDetailInner({ project, onClose, onAction, onAddNote, onSetDelive
                     <div className="text-slate-700">{h.label}</div>
                     {h.toMonth && (
                       <div className="text-xs text-slate-400">変更後：{monthLabel(h.toMonth)}</div>
+                    )}
+                    {h.quoteAmount != null && (
+                      <div className="text-xs text-slate-400">金額：{formatYen(h.quoteAmount)}</div>
+                    )}
+                    {h.quoteDate && (
+                      <div className="text-xs text-slate-400">提出日：{fmtDate(h.quoteDate)}</div>
                     )}
                     <div className="text-xs text-slate-400">{fmtDate(h.date)}</div>
                   </div>
@@ -2332,6 +2395,7 @@ export default function App() {
   const [wonTarget, setWonTarget] = useState(null);
   const [lostTarget, setLostTarget] = useState(null);
   const [deliveredTarget, setDeliveredTarget] = useState(null);
+  const [quoteTarget, setQuoteTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [monthlyTarget, setMonthlyTargetState] = useState(3000000);
@@ -2454,6 +2518,8 @@ export default function App() {
       setPostponeTarget(project);
     } else if (key === "delivered") {
       setDeliveredTarget(project);
+    } else if (key === "quote") {
+      setQuoteTarget(project);
     } else if (key === "edit") {
       setEditing(project);
     } else if (key === "delete") {
@@ -2504,25 +2570,26 @@ export default function App() {
     updateProject(project.id, { deliveryDueDate: date });
   }
 
-  function setProjectQuoteSubmitted(project, checked) {
-    updateProject(project.id, {
-      quoteSubmitted: checked,
-      quoteSubmittedAt: checked ? project.quoteSubmittedAt || todayDateStr() : null,
+  function confirmQuote(amount, date) {
+    const isResubmit = !!quoteTarget.quoteSubmitted;
+    updateProject(quoteTarget.id, {
+      quoteSubmitted: true,
+      quoteSubmittedAt: date,
+      quotedAmount: amount,
       history: [
-        ...project.history,
+        ...quoteTarget.history,
         {
           id: uid(),
           date: todayIso(),
-          type: checked ? "quote_submitted" : "quote_unsubmitted",
-          label: checked ? "見積提出" : "見積提出を取り消し",
+          type: "quote_submitted",
+          label: isResubmit ? "再見積提出" : "見積提出",
+          quoteDate: date,
+          quoteAmount: amount,
         },
       ],
     });
-    pushToast(checked ? "見積提出済みにしました" : "見積提出済みを解除しました");
-  }
-
-  function setProjectQuoteDate(project, date) {
-    updateProject(project.id, { quoteSubmittedAt: date });
+    pushToast(`${isResubmit ? "再見積を提出しました" : "見積を提出しました"}（${formatYen(amount)}）`);
+    setQuoteTarget(null);
   }
 
   async function addVisit(form) {
@@ -2594,6 +2661,7 @@ export default function App() {
         status: "active",
         quoteSubmitted: false,
         quoteSubmittedAt: null,
+        quotedAmount: null,
         progressNotes: [],
         archived: false,
         isReference: false,
@@ -2619,6 +2687,7 @@ export default function App() {
         status: "active",
         quoteSubmitted: false,
         quoteSubmittedAt: null,
+        quotedAmount: null,
         progressNotes: [],
         archived: false,
         isReference: true,
@@ -3040,6 +3109,12 @@ export default function App() {
         onConfirm={confirmWon}
       />
 
+      <QuoteDialog
+        project={quoteTarget}
+        onClose={() => setQuoteTarget(null)}
+        onConfirm={confirmQuote}
+      />
+
       <ConfirmDialog
         open={!!lostTarget}
         onClose={() => setLostTarget(null)}
@@ -3073,8 +3148,6 @@ export default function App() {
           onAction={handleAction}
           onAddNote={(text) => addProgressNote(detail, text)}
           onSetDeliveryDate={(date) => setProjectDeliveryDate(detail, date)}
-          onSetQuoteSubmitted={(checked) => setProjectQuoteSubmitted(detail, checked)}
-          onSetQuoteDate={(date) => setProjectQuoteDate(detail, date)}
           relatedVisits={detailVisits}
         />
       )}
