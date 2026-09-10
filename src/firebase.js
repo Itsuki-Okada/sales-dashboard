@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 
 // ------------------------------------------------------------------
 // Firebaseプロジェクトの設定値。
@@ -24,4 +24,14 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// 通常のストリーミング接続(WebChannel)が、社内ネットワークや一部のブラウザ
+// 環境でブロックされ「Failed to get document because the client is
+// offline」のようなエラーになることがある。
+// experimentalAutoDetectLongPolling を有効にすると、Firestoreが接続時に
+// 自動でロングポーリング方式にフォールバックしてくれるため、より多くの
+// ネットワーク環境で接続できるようになる。
+export const db = initializeFirestore(app, {
+  experimentalAutoDetectLongPolling: true,
+  useFetchStreams: false,
+});
