@@ -1,5 +1,17 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
+  subscribeToProjects,
+  subscribeToVisits,
+  subscribeToSettings,
+  addProjectDoc,
+  updateProjectDoc,
+  deleteProjectDoc,
+  addVisitDoc,
+  deleteVisitDoc,
+  setMonthlyTargetDoc,
+  ensureSettingsDoc,
+} from "./firestoreService";
+import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
@@ -8,7 +20,7 @@ import {
   LayoutDashboard, BarChart3, CalendarDays, Star, Bell, Settings,
   Trash2, Pencil, CheckCircle2, XCircle, Clock3, ArrowRight,
   TrendingUp, TrendingDown, Building2, Truck, Menu, MapPin, FileCheck,
-  ArrowUpDown, Target, Link2,
+  ArrowUpDown, Target, Link2, FileText,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -73,6 +85,35 @@ function monthLabel(m) {
 
 function yearOf(m) {
   return m.slice(0, 4);
+}
+
+function currentMonthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// 直近numMonths分の "YYYY-MM" の配列を古い順で返す。
+function recentMonthKeys(numMonths) {
+  const keys = [];
+  const d = new Date();
+  d.setDate(1);
+  for (let i = numMonths - 1; i >= 0; i--) {
+    const dt = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    keys.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return keys;
+}
+
+// 現在月を基準に startOffset〜endOffset ヶ月分の "YYYY-MM" を返す（未来方向も可）。
+function monthKeysRange(startOffset, endOffset) {
+  const keys = [];
+  const d = new Date();
+  d.setDate(1);
+  for (let i = startOffset; i <= endOffset; i++) {
+    const dt = new Date(d.getFullYear(), d.getMonth() + i, 1);
+    keys.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return keys;
 }
 
 // 会社名の50音絞り込み用ユーティリティ。
@@ -163,180 +204,6 @@ function computeCounts(list) {
     estimatedTotal,
     confirmedTotal,
   };
-}
-
-/* ------------------------------------------------------------------ */
-/* シードデータ                                                        */
-/* ------------------------------------------------------------------ */
-
-const CLIENT_NAMES = [
-  "株式会社アルファデザイン", "有限会社グリーンリーフ", "株式会社サンライズ商事",
-  "株式会社ノーザンライツ", "合同会社ブルーム", "株式会社テラス建築",
-  "株式会社フィールドワークス", "株式会社みなと運輸", "株式会社オレンジページ制作",
-  "株式会社シーサイド不動産", "株式会社たけやま食品", "株式会社クラウドナイン",
-  "株式会社さくら学院", "株式会社リバーサイド商店", "株式会社ハーモニー音楽",
-  "株式会社みらい工房", "有限会社にしき屋", "株式会社スターゲイズ",
-  "株式会社パインツリー", "株式会社あすなろ設計", "株式会社ことのは出版",
-  "株式会社フォレストガーデン", "株式会社かがやき整体", "株式会社なでしこ農園",
-];
-
-const PROJECT_NAMES = {
-  WEB: ["コーポレートサイト制作", "採用サイトリニューアル", "ECサイト構築", "LP制作", "会員サイト改修"],
-  グラフィック: ["パンフレット制作", "会社案内デザイン", "ロゴ・VI制作", "商品カタログ制作", "名刺デザイン"],
-  動画: ["採用動画制作", "商品紹介動画", "会社紹介ムービー", "SNS広告動画", "展示会用映像制作"],
-  AI: ["社内AIチャットボット導入", "AI需要予測ツール開発", "AIコピー生成ツール導入", "業務自動化AI構築"],
-  SNS: ["Instagram運用代行", "X運用・広告代行", "SNS広告クリエイティブ制作", "TikTok運用支援"],
-};
-
-const BASE_AMOUNT = { WEB: 800000, グラフィック: 300000, 動画: 600000, AI: 1500000, SNS: 200000 };
-
-const CONTACT_FAMILY_NAMES = ["田中", "鈴木", "佐藤", "高橋", "伊藤", "渡辺", "山本", "中村", "小林", "加藤"];
-
-function contactFor(idx) {
-  return {
-    contactName: `${CONTACT_FAMILY_NAMES[idx % CONTACT_FAMILY_NAMES.length]} 様`,
-    contactEmail: `contact${idx}@example.co.jp`,
-  };
-}
-
-function roundTo10k(n) {
-  return Math.round(n / 10000) * 10000;
-}
-
-function seedProjects() {
-  const months = ["2026-08", "2026-09", "2026-10", "2026-11", "2026-12"];
-  const statuses = ["active", "active", "active", "won", "delivered", "lost"];
-  let clientIdx = 0;
-  const list = [];
-  months.forEach((month, mi) => {
-    CATEGORIES.forEach((cat, ci) => {
-      const countForCell = mi === 0 || mi === 1 ? 1 : ci % 2 === 0 ? 1 : 0;
-      for (let i = 0; i < countForCell + 1; i++) {
-        const name =
-          PROJECT_NAMES[cat][(clientIdx + i) % PROJECT_NAMES[cat].length];
-        const client = CLIENT_NAMES[clientIdx % CLIENT_NAMES.length];
-        clientIdx++;
-        const confidence = ((clientIdx + ci) % 3) + 1;
-        const status = statuses[(clientIdx + mi) % statuses.length];
-        const wonFamily = status === "won" || status === "delivered";
-        const assignee = ASSIGNEES[clientIdx % ASSIGNEES.length];
-        const estimatedAmount = roundTo10k(BASE_AMOUNT[cat] * (1 + (((clientIdx % 5) - 2) * 0.15)));
-        const confirmedAmount = wonFamily ? roundTo10k(estimatedAmount * (0.9 + (clientIdx % 3) * 0.05)) : null;
-        const contact = contactFor(clientIdx);
-        const created = new Date(2026, 7 + mi, 1 + ((clientIdx * 3) % 25)).toISOString();
-        const deliveryDueDate = wonFamily ? `${month}-${String(20 + (clientIdx % 8)).padStart(2, "0")}` : null;
-        const deliveredAt = status === "delivered" ? created : null;
-        const quoteSubmitted = status === "active" && clientIdx % 3 === 0;
-        list.push({
-          id: uid(),
-          name,
-          clientName: client,
-          category: cat,
-          scheduledMonth: month,
-          confidence,
-          status,
-          assignee,
-          estimatedAmount,
-          confirmedAmount,
-          deliveryDueDate,
-          deliveredAt,
-          quoteSubmitted,
-          quoteSubmittedAt: quoteSubmitted ? created : null,
-          contactName: contact.contactName,
-          contactEmail: contact.contactEmail,
-          memo: "",
-          progressNotes: [],
-          archived: false,
-          createdAt: created,
-          updatedAt: created,
-          history: [
-            {
-              id: uid(),
-              date: created,
-              type: "created",
-              label: "新規登録",
-              scheduledMonth: month,
-            },
-            ...(status === "lost" || wonFamily
-              ? [
-                  {
-                    id: uid(),
-                    date: created,
-                    type: status === "lost" ? "lost" : "won",
-                    label: status === "lost" ? "ロスト" : "受注",
-                    previousStatus: "active",
-                  },
-                ]
-              : []),
-            ...(status === "delivered"
-              ? [
-                  {
-                    id: uid(),
-                    date: created,
-                    type: "delivered",
-                    label: "納品済み",
-                    previousStatus: "won",
-                  },
-                ]
-              : []),
-          ],
-        });
-      }
-    });
-  });
-  return list.slice(0, 24);
-}
-
-// 昨年(2025年)との比較用に、各社の過去実績をアーカイブ案件として生成する。
-// archived: true の案件はダッシュボード本体（案件ボード）には表示されず、
-// 「年別売上」「会社一覧」ページの実績比較にのみ使われる。
-function seedArchivedProjects() {
-  const list = [];
-  CLIENT_NAMES.forEach((client, ci) => {
-    const dealCount = 2 + (ci % 3); // 会社ごとに2〜4件
-    for (let d = 0; d < dealCount; d++) {
-      const monthIndex = (ci * 3 + d * 4) % 12;
-      const month = `2025-${String(monthIndex + 1).padStart(2, "0")}`;
-      const cat = CATEGORIES[(ci + d) % CATEGORIES.length];
-      const name = PROJECT_NAMES[cat][(ci + d) % PROJECT_NAMES[cat].length];
-      const assignee = ASSIGNEES[(ci + d) % ASSIGNEES.length];
-      const estimatedAmount = roundTo10k(BASE_AMOUNT[cat] * (1 + (((ci + d) % 5 - 2) * 0.15)));
-      const status = (ci + d) % 4 === 3 ? "lost" : "won";
-      const confirmedAmount = status === "won" ? roundTo10k(estimatedAmount * (0.9 + ((ci + d) % 3) * 0.05)) : null;
-      const contact = contactFor(ci * 7 + d);
-      const created = new Date(2025, monthIndex, 10).toISOString();
-      list.push({
-        id: uid(),
-        name,
-        clientName: client,
-        category: cat,
-        scheduledMonth: month,
-        confidence: ((ci + d) % 3) + 1,
-        status,
-        assignee,
-        estimatedAmount,
-        confirmedAmount,
-        contactName: contact.contactName,
-        contactEmail: contact.contactEmail,
-        memo: "",
-        progressNotes: [],
-        archived: true,
-        createdAt: created,
-        updatedAt: created,
-        history: [
-          { id: uid(), date: created, type: "created", label: "新規登録", scheduledMonth: month },
-          {
-            id: uid(),
-            date: created,
-            type: status,
-            label: status === "won" ? "受注" : "ロスト",
-            previousStatus: "active",
-          },
-        ],
-      });
-    }
-  });
-  return list;
 }
 
 /* ------------------------------------------------------------------ */
@@ -702,13 +569,13 @@ function TargetForm({ initial, onSubmit, onCancel }) {
 /* 案件追加・編集モーダル                                                */
 /* ------------------------------------------------------------------ */
 
-function ProjectForm({ initial, onSubmit, onCancel }) {
+function ProjectForm({ initial, companies = [], onSubmit, onCancel }) {
   const [form, setForm] = useState(
     initial ?? {
       name: "",
       clientName: "",
       category: "WEB",
-      scheduledMonth: "2026-09",
+      scheduledMonth: currentMonthKey(),
       confidence: 2,
       assignee: ASSIGNEES[0],
       estimatedAmount: "",
@@ -737,11 +604,17 @@ function ProjectForm({ initial, onSubmit, onCancel }) {
       <div>
         <label className="text-xs font-medium text-slate-500">客先（会社名） *</label>
         <input
+          list="project-company-list"
           value={form.clientName}
           onChange={(e) => setForm({ ...form, clientName: e.target.value })}
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-          placeholder="例）株式会社◯◯"
+          placeholder="既存の会社名を検索、または新規に入力"
         />
+        <datalist id="project-company-list">
+          {companies.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -1172,18 +1045,25 @@ function ProjectDetailInner({ project, onClose, onAction, onAddNote, onSetDelive
 
           <div className="mt-6">
             <div className="mb-2 text-xs font-semibold text-slate-400">案件履歴</div>
-            <ol className="space-y-3 border-l border-slate-200 pl-4">
-              {project.history.map((h) => (
-                <li key={h.id} className="relative text-sm">
-                  <span className="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-indigo-400" />
-                  <div className="text-slate-700">{h.label}</div>
-                  {h.toMonth && (
-                    <div className="text-xs text-slate-400">変更後：{monthLabel(h.toMonth)}</div>
-                  )}
-                  <div className="text-xs text-slate-400">{fmtDate(h.date)}</div>
-                </li>
+            <div className="flex flex-col">
+              {project.history.map((h, i) => (
+                <div key={h.id} className="flex gap-3">
+                  <div className="flex w-2 shrink-0 flex-col items-center">
+                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-indigo-400" />
+                    {i < project.history.length - 1 && (
+                      <span className="mt-1 w-px flex-1 bg-slate-200" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 pb-4 text-sm">
+                    <div className="text-slate-700">{h.label}</div>
+                    {h.toMonth && (
+                      <div className="text-xs text-slate-400">変更後：{monthLabel(h.toMonth)}</div>
+                    )}
+                    <div className="text-xs text-slate-400">{fmtDate(h.date)}</div>
+                  </div>
+                </div>
               ))}
-            </ol>
+            </div>
           </div>
         </div>
       </div>
@@ -1237,11 +1117,12 @@ function AnalysisPage({ projects }) {
     };
   });
 
-  const months = ["2026-08", "2026-09", "2026-10", "2026-11", "2026-12"];
+  const months = recentMonthKeys(6);
   const monthlyRate = months.map((m) => {
     const list = projects.filter((p) => p.scheduledMonth === m);
     const c = computeCounts(list);
-    return { month: monthLabel(m).replace("2026年", ""), 受注率: c.rate ?? 0 };
+    const [, mo] = m.split("-");
+    return { month: `${parseInt(mo, 10)}月`, 受注率: c.rate ?? 0 };
   });
 
   return (
@@ -1935,11 +1816,13 @@ function RemindersPanel({ projects, visits, onOpenDetail, onGoToVisits }) {
     new Set(projects.filter((p) => p.status === "active" || p.status === "won").map((p) => p.clientName))
   );
   const cutoff = new Date();
-  cutoff.setFullYear(cutoff.getFullYear() - 1);
+  cutoff.setMonth(cutoff.getMonth() - 3);
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   const staleCompanies = activeCompanies.filter((name) => {
     const companyVisits = visits.filter((v) => v.clientName === name);
-    if (companyVisits.length === 0) return true;
+    // 訪問記録が一度もない会社は「新規で追加したばかり」の可能性が高いため対象外にする。
+    // あくまで「過去に訪問歴はあるが、3ヶ月以上間が空いている」会社だけを知らせる。
+    if (companyVisits.length === 0) return false;
     const lastVisit = companyVisits.reduce((max, v) => (v.date > max ? v.date : max), companyVisits[0].date);
     return lastVisit < cutoffStr;
   });
@@ -2012,7 +1895,7 @@ function RemindersPanel({ projects, visits, onOpenDetail, onGoToVisits }) {
                 <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-700">訪問推奨</span>
                 <span className="truncate">{item.name}</span>
               </span>
-              <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">1年以上未訪問</span>
+              <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">3ヶ月以上未訪問</span>
             </button>
           );
         })}
@@ -2034,7 +1917,8 @@ function RemindersPanel({ projects, visits, onOpenDetail, onGoToVisits }) {
 /* ------------------------------------------------------------------ */
 
 function MonthlyPage({ projects }) {
-  const months = ["2026-08", "2026-09", "2026-10", "2026-11", "2026-12"];
+  const presentMonths = projects.map((p) => p.scheduledMonth);
+  const months = Array.from(new Set([...monthKeysRange(-1, 4), ...presentMonths])).sort();
   const rows = months.map((m) => {
     const list = projects.filter((p) => p.scheduledMonth === m);
     const c = computeCounts(list);
@@ -2103,31 +1987,6 @@ function MonthlyPage({ projects }) {
 /* ------------------------------------------------------------------ */
 /* 訪問記録                                                             */
 /* ------------------------------------------------------------------ */
-
-function seedVisits(projects = []) {
-  const samples = [
-    { daysAgo: 2, clientName: CLIENT_NAMES[0], assignee: "荻田", purpose: "提案・見積提示", memo: "先方役員も同席。年内の発注に前向きな反応。" },
-    { daysAgo: 5, clientName: CLIENT_NAMES[3], assignee: "岡田", purpose: "定例訪問", memo: "現行サイトの課題をヒアリング。次回提案書を持参予定。" },
-    { daysAgo: 9, clientName: CLIENT_NAMES[8], assignee: "荻田", purpose: "新規開拓", memo: "初訪問。名刺交換のみ、次回改めてアポ予定。" },
-    { daysAgo: 14, clientName: CLIENT_NAMES[12], assignee: "岡田", purpose: "契約締結", memo: "契約書に捺印いただき受注確定。" },
-  ];
-  return samples.map((s) => {
-    const d = new Date();
-    d.setDate(d.getDate() - s.daysAgo);
-    const date = d.toISOString().slice(0, 10);
-    const related = projects.find((p) => p.clientName === s.clientName && !p.archived);
-    return {
-      id: uid(),
-      date,
-      clientName: s.clientName,
-      assignee: s.assignee,
-      purpose: s.purpose,
-      memo: s.memo,
-      relatedProjectId: related ? related.id : null,
-      createdAt: d.toISOString(),
-    };
-  });
-}
 
 function VisitForm({ companies, projects = [], initialClientName = "", onSubmit, onCancel }) {
   const [form, setForm] = useState({
@@ -2311,16 +2170,124 @@ function VisitsPage({ visits, companies, projects, onAdd, onDelete, onOpenDetail
 }
 
 /* ------------------------------------------------------------------ */
+/* 参考見積りページ                                                     */
+/* ------------------------------------------------------------------ */
+
+function ReferenceEstimatesPage({ referenceProjects, onPromote, onEdit, onDelete, onAdd }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm text-slate-500">
+          まだ受注予定に組み込まれていない、社内検討用の参考見積りです。ここに登録されている間は他の画面には表示されません。
+        </div>
+        <button
+          onClick={onAdd}
+          className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          <Plus size={16} />
+          参考見積りを追加
+        </button>
+      </div>
+
+      {referenceProjects.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+          参考見積りはまだありません。
+        </div>
+      ) : (
+        <>
+          <div className="hidden overflow-x-auto rounded-2xl border border-slate-100 bg-white sm:block">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-slate-400">
+                  <th className="px-5 py-3 font-medium">案件</th>
+                  <th className="px-3 py-3 font-medium">客先</th>
+                  <th className="px-3 py-3 font-medium">内容</th>
+                  <th className="px-3 py-3 font-medium">担当</th>
+                  <th className="px-3 py-3 font-medium">肌感</th>
+                  <th className="px-3 py-3 font-medium">見込み金額</th>
+                  <th className="px-3 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {referenceProjects.map((p) => (
+                  <tr key={p.id} className="border-t border-slate-50">
+                    <td className="max-w-[220px] truncate px-5 py-3 font-medium text-slate-800">{p.name}</td>
+                    <td className="max-w-[160px] truncate px-3 py-3 text-slate-500">{p.clientName}</td>
+                    <td className="px-3 py-3"><CategoryPill category={p.category} /></td>
+                    <td className="px-3 py-3 whitespace-nowrap text-slate-500">{p.assignee}</td>
+                    <td className="px-3 py-3"><ConfidenceStars value={p.confidence} /></td>
+                    <td className="px-3 py-3 whitespace-nowrap tabular-nums text-slate-600">{formatManYen(p.estimatedAmount)}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button onClick={() => onEdit(p)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                          <Pencil size={15} />
+                        </button>
+                        <button onClick={() => onDelete(p)} className="rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500">
+                          <Trash2 size={15} />
+                        </button>
+                        <button
+                          onClick={() => onPromote(p)}
+                          className="whitespace-nowrap rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+                        >
+                          本見積もりにする
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:hidden">
+            {referenceProjects.map((p) => (
+              <div key={p.id} className="rounded-xl border border-slate-100 bg-white p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-slate-800">{p.name}</div>
+                    <div className="truncate text-xs text-slate-500">{p.clientName}</div>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <button onClick={() => onEdit(p)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100">
+                      <Pencil size={15} />
+                    </button>
+                    <button onClick={() => onDelete(p)} className="rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <CategoryPill category={p.category} />
+                  <ConfidenceStars value={p.confidence} />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span className="text-slate-400">担当：{p.assignee}</span>
+                  <span className="font-medium tabular-nums text-slate-700">{formatManYen(p.estimatedAmount)}</span>
+                </div>
+                <button
+                  onClick={() => onPromote(p)}
+                  className="mt-3 w-full rounded-lg bg-indigo-600 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                >
+                  本見積もりにする
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* メインアプリ                                                        */
 /* ------------------------------------------------------------------ */
 
 export default function App() {
-  const [initialData] = useState(() => {
-    const seededProjects = [...seedProjects(), ...seedArchivedProjects()];
-    return { projects: seededProjects, visits: seedVisits(seededProjects) };
-  });
-  const [projects, setProjects] = useState(initialData.projects);
-  const [visits, setVisits] = useState(initialData.visits);
+  const [projects, setProjects] = useState([]);
+  const [visits, setVisits] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState(null);
   const [view, setView] = useState("dashboard");
   const [activeCategory, setActiveCategory] = useState("全体");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -2329,6 +2296,7 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [showAddReference, setShowAddReference] = useState(false);
   const [editing, setEditing] = useState(null);
   const [postponeTarget, setPostponeTarget] = useState(null);
   const [wonTarget, setWonTarget] = useState(null);
@@ -2336,11 +2304,60 @@ export default function App() {
   const [deliveredTarget, setDeliveredTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [detailId, setDetailId] = useState(null);
-  const [monthlyTarget, setMonthlyTarget] = useState(3000000);
+  const [monthlyTarget, setMonthlyTargetState] = useState(3000000);
   const [showTargetEdit, setShowTargetEdit] = useState(false);
   const detail = projects.find((p) => p.id === detailId) || null;
   const setDetail = (p) => setDetailId(p ? p.id : null);
   const detailVisits = detail ? visits.filter((v) => v.relatedProjectId === detail.id) : [];
+
+  // Firestoreへ接続し、案件・訪問記録・設定をリアルタイムに購読する。
+  useEffect(() => {
+    let loadedProjects = false;
+    let loadedVisits = false;
+    const checkLoaded = () => {
+      if (loadedProjects && loadedVisits) setLoading(false);
+    };
+
+    const unsubProjects = subscribeToProjects(
+      (list) => {
+        setProjects(list);
+        loadedProjects = true;
+        checkLoaded();
+      },
+      (err) => {
+        console.error(err);
+        setConnectionError(err.message || "Firestoreへの接続に失敗しました");
+        loadedProjects = true;
+        checkLoaded();
+      }
+    );
+    const unsubVisits = subscribeToVisits(
+      (list) => {
+        setVisits(list);
+        loadedVisits = true;
+        checkLoaded();
+      },
+      (err) => {
+        console.error(err);
+        setConnectionError(err.message || "Firestoreへの接続に失敗しました");
+        loadedVisits = true;
+        checkLoaded();
+      }
+    );
+    const unsubSettings = subscribeToSettings(
+      (data) => {
+        if (typeof data.monthlyTarget === "number") setMonthlyTargetState(data.monthlyTarget);
+      },
+      (err) => console.error(err)
+    );
+    ensureSettingsDoc(3000000).catch((err) => console.error(err));
+
+    return () => {
+      unsubProjects();
+      unsubVisits();
+      unsubSettings();
+    };
+  }, []);
 
   function pushToast(message) {
     const id = uid();
@@ -2348,10 +2365,12 @@ export default function App() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2500);
   }
 
-  const boardProjects = useMemo(() => projects.filter((p) => !p.archived), [projects]);
+  const visibleProjects = useMemo(() => projects.filter((p) => !p.isReference), [projects]);
+  const referenceProjects = useMemo(() => projects.filter((p) => p.isReference), [projects]);
+  const boardProjects = useMemo(() => visibleProjects.filter((p) => !p.archived), [visibleProjects]);
   const companyNames = useMemo(
-    () => Array.from(new Set(projects.map((p) => p.clientName))).sort((a, b) => a.localeCompare(b, "ja")),
-    [projects]
+    () => Array.from(new Set(visibleProjects.map((p) => p.clientName))).sort((a, b) => a.localeCompare(b, "ja")),
+    [visibleProjects]
   );
 
   const filtered = useMemo(() => {
@@ -2378,7 +2397,7 @@ export default function App() {
     return Array.from(set).sort();
   }, [filtered]);
 
-  const thisMonthKey = "2026-09";
+  const thisMonthKey = currentMonthKey();
   const thisMonthList = filtered.filter((p) => p.scheduledMonth === thisMonthKey);
   const thisMonthPostponed = boardProjects.reduce(
     (acc, p) =>
@@ -2390,9 +2409,10 @@ export default function App() {
   const spotlight = filtered.filter((p) => p.confidence === 3 && p.status === "active").slice(0, 3);
 
   function updateProject(id, patch) {
-    setProjects((list) =>
-      list.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: todayIso() } : p))
-    );
+    updateProjectDoc(id, { ...patch, updatedAt: todayIso() }).catch((err) => {
+      console.error(err);
+      pushToast("更新に失敗しました。通信状況をご確認ください。");
+    });
   }
 
   function handleAction(key, project) {
@@ -2471,14 +2491,24 @@ export default function App() {
     pushToast(checked ? "見積提出済みにしました" : "見積提出済みを解除しました");
   }
 
-  function addVisit(form) {
-    setVisits((list) => [...list, { id: uid(), ...form, createdAt: todayIso() }]);
-    pushToast("訪問記録を追加しました");
+  async function addVisit(form) {
+    try {
+      await addVisitDoc({ ...form, createdAt: todayIso() });
+      pushToast("訪問記録を追加しました");
+    } catch (err) {
+      console.error(err);
+      pushToast("訪問記録の追加に失敗しました");
+    }
   }
 
-  function deleteVisit(visit) {
-    setVisits((list) => list.filter((v) => v.id !== visit.id));
-    pushToast("訪問記録を削除しました");
+  async function deleteVisit(visit) {
+    try {
+      await deleteVisitDoc(visit.id);
+      pushToast("訪問記録を削除しました");
+    } catch (err) {
+      console.error(err);
+      pushToast("訪問記録の削除に失敗しました");
+    }
   }
 
   function confirmPostpone(targetMonth) {
@@ -2501,10 +2531,16 @@ export default function App() {
     setPostponeTarget(null);
   }
 
-  function confirmDelete() {
-    setProjects((list) => list.filter((p) => p.id !== deleteTarget.id));
-    pushToast("案件を削除しました");
+  async function confirmDelete() {
+    const target = deleteTarget;
     setDeleteTarget(null);
+    try {
+      await deleteProjectDoc(target.id);
+      pushToast("案件を削除しました");
+    } catch (err) {
+      console.error(err);
+      pushToast("削除に失敗しました");
+    }
   }
 
   function addProgressNote(project, text) {
@@ -2514,12 +2550,10 @@ export default function App() {
     pushToast("進行状況メモを追加しました");
   }
 
-  function saveNewProject(form) {
+  async function saveNewProject(form) {
     const now = todayIso();
-    setProjects((list) => [
-      ...list,
-      {
-        id: uid(),
+    try {
+      await addProjectDoc({
         ...form,
         estimatedAmount: Number(form.estimatedAmount) || 0,
         confirmedAmount: null,
@@ -2528,13 +2562,53 @@ export default function App() {
         quoteSubmittedAt: null,
         progressNotes: [],
         archived: false,
+        isReference: false,
         createdAt: now,
         updatedAt: now,
         history: [{ id: uid(), date: now, type: "created", label: "新規登録", scheduledMonth: form.scheduledMonth }],
-      },
-    ]);
-    pushToast("案件を登録しました");
-    setShowAdd(false);
+      });
+      pushToast("案件を登録しました");
+      setShowAdd(false);
+    } catch (err) {
+      console.error(err);
+      pushToast("登録に失敗しました。通信状況をご確認ください。");
+    }
+  }
+
+  async function saveNewReferenceProject(form) {
+    const now = todayIso();
+    try {
+      await addProjectDoc({
+        ...form,
+        estimatedAmount: Number(form.estimatedAmount) || 0,
+        confirmedAmount: null,
+        status: "active",
+        quoteSubmitted: false,
+        quoteSubmittedAt: null,
+        progressNotes: [],
+        archived: false,
+        isReference: true,
+        createdAt: now,
+        updatedAt: now,
+        history: [{ id: uid(), date: now, type: "created", label: "参考見積りとして登録", scheduledMonth: form.scheduledMonth }],
+      });
+      pushToast("参考見積りを登録しました");
+      setShowAddReference(false);
+    } catch (err) {
+      console.error(err);
+      pushToast("登録に失敗しました。通信状況をご確認ください。");
+    }
+  }
+
+  function promoteReference(project) {
+    updateProject(project.id, {
+      isReference: false,
+      history: [
+        ...project.history,
+        { id: uid(), date: todayIso(), type: "promoted", label: "本見積もりに変更" },
+      ],
+    });
+    pushToast(`「${project.name}」を本見積もりにしました`);
   }
 
   function saveEditProject(form) {
@@ -2550,7 +2624,30 @@ export default function App() {
     { key: "yearly", label: "年別売上", icon: TrendingUp },
     { key: "companies", label: "会社一覧", icon: Building2 },
     { key: "visits", label: "訪問記録", icon: MapPin },
+    { key: "reference", label: "参考見積り", icon: FileText },
   ];
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-400">
+        読み込み中...
+      </div>
+    );
+  }
+
+  if (connectionError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+        <div className="max-w-md rounded-2xl border border-rose-100 bg-white p-6 text-center">
+          <div className="text-sm font-semibold text-rose-600">Firestoreに接続できませんでした</div>
+          <div className="mt-2 text-xs text-slate-500 break-all">{connectionError}</div>
+          <div className="mt-4 text-xs text-slate-400">
+            src/firebase.js に対応する .env.local のFirebase設定値と、Firestoreのセキュリティルールをご確認ください。
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900">
@@ -2646,6 +2743,13 @@ export default function App() {
             >
               <Plus size={16} />
               <span className="hidden sm:inline">案件を追加</span>
+            </button>
+            <button
+              onClick={() => setShowAddReference(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 sm:px-3.5"
+            >
+              <FileText size={16} />
+              <span className="hidden sm:inline">参考見積り追加</span>
             </button>
             <button className="hidden rounded-lg p-2 text-slate-400 hover:bg-slate-100 sm:inline-flex"><Bell size={18} /></button>
             <button className="hidden rounded-lg p-2 text-slate-400 hover:bg-slate-100 sm:inline-flex"><Settings size={18} /></button>
@@ -2828,19 +2932,31 @@ export default function App() {
 
           {view === "yearly" && (
             <div className="mx-auto max-w-5xl">
-              <YearlyRevenuePage projects={projects} />
+              <YearlyRevenuePage projects={visibleProjects} />
             </div>
           )}
 
           {view === "companies" && (
             <div className="mx-auto max-w-6xl">
-              <CompanyListPage projects={projects} onOpenDetail={setDetail} visits={visits} onAddVisit={addVisit} />
+              <CompanyListPage projects={visibleProjects} onOpenDetail={setDetail} visits={visits} onAddVisit={addVisit} />
             </div>
           )}
 
           {view === "visits" && (
             <div className="mx-auto max-w-4xl">
-              <VisitsPage visits={visits} companies={companyNames} projects={projects} onAdd={addVisit} onDelete={deleteVisit} onOpenDetail={setDetail} />
+              <VisitsPage visits={visits} companies={companyNames} projects={visibleProjects} onAdd={addVisit} onDelete={deleteVisit} onOpenDetail={setDetail} />
+            </div>
+          )}
+
+          {view === "reference" && (
+            <div className="mx-auto max-w-5xl">
+              <ReferenceEstimatesPage
+                referenceProjects={referenceProjects}
+                onPromote={promoteReference}
+                onEdit={setEditing}
+                onDelete={setDeleteTarget}
+                onAdd={() => setShowAddReference(true)}
+              />
             </div>
           )}
         </main>
@@ -2848,21 +2964,30 @@ export default function App() {
 
       {/* モーダル類 */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="案件を追加">
-        <ProjectForm onSubmit={saveNewProject} onCancel={() => setShowAdd(false)} />
+        <ProjectForm onSubmit={saveNewProject} onCancel={() => setShowAdd(false)} companies={companyNames} />
       </Modal>
 
       <Modal open={!!editing} onClose={() => setEditing(null)} title="案件を編集">
         {editing && (
-          <ProjectForm initial={editing} onSubmit={saveEditProject} onCancel={() => setEditing(null)} />
+          <ProjectForm initial={editing} companies={companyNames} onSubmit={saveEditProject} onCancel={() => setEditing(null)} />
         )}
+      </Modal>
+
+      <Modal open={showAddReference} onClose={() => setShowAddReference(false)} title="参考見積りを追加">
+        <ProjectForm onSubmit={saveNewReferenceProject} onCancel={() => setShowAddReference(false)} companies={companyNames} />
       </Modal>
 
       <Modal open={showTargetEdit} onClose={() => setShowTargetEdit(false)} title="月間目標を設定" width="max-w-sm">
         <TargetForm
           initial={monthlyTarget}
-          onSubmit={(amount) => {
-            setMonthlyTarget(amount);
-            pushToast("月間目標を更新しました");
+          onSubmit={async (amount) => {
+            try {
+              await setMonthlyTargetDoc(amount);
+              pushToast("月間目標を更新しました");
+            } catch (err) {
+              console.error(err);
+              pushToast("更新に失敗しました");
+            }
             setShowTargetEdit(false);
           }}
           onCancel={() => setShowTargetEdit(false)}
