@@ -153,6 +153,10 @@ function todayIso() {
   return new Date().toISOString();
 }
 
+function todayDateStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function fmtDate(iso) {
   const d = new Date(iso);
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(
@@ -832,7 +836,7 @@ function WonDialogInner({ project, onClose, onConfirm }) {
 /* 案件詳細ドロワー                                                     */
 /* ------------------------------------------------------------------ */
 
-function ProjectDetail({ project, onClose, onAction, onAddNote, onSetDeliveryDate, onSetQuoteSubmitted, relatedVisits }) {
+function ProjectDetail({ project, onClose, onAction, onAddNote, onSetDeliveryDate, onSetQuoteSubmitted, onSetQuoteDate, relatedVisits }) {
   if (!project) return null;
   return (
     <ProjectDetailInner
@@ -842,21 +846,31 @@ function ProjectDetail({ project, onClose, onAction, onAddNote, onSetDeliveryDat
       onAddNote={onAddNote}
       onSetDeliveryDate={onSetDeliveryDate}
       onSetQuoteSubmitted={onSetQuoteSubmitted}
+      onSetQuoteDate={onSetQuoteDate}
       relatedVisits={relatedVisits}
     />
   );
 }
 
-function ProjectDetailInner({ project, onClose, onAction, onAddNote, onSetDeliveryDate, onSetQuoteSubmitted, relatedVisits }) {
+function ProjectDetailInner({ project, onClose, onAction, onAddNote, onSetDeliveryDate, onSetQuoteSubmitted, onSetQuoteDate, relatedVisits }) {
   const [noteText, setNoteText] = useState("");
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/40">
       <div className="h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h3 className="text-base font-semibold text-slate-900">案件詳細</h3>
-          <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onAction("edit", project)}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100"
+            >
+              <Pencil size={14} />
+              編集
+            </button>
+            <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
+              <X size={18} />
+            </button>
+          </div>
         </div>
         <div className="px-6 py-5">
           <div className="flex items-start justify-between">
@@ -915,19 +929,35 @@ function ProjectDetailInner({ project, onClose, onAction, onAddNote, onSetDelive
 
           {project.status === "active" && (
             <div className="mt-5 flex flex-col gap-3">
-              <label className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={!!project.quoteSubmitted}
-                  onChange={(e) => onSetQuoteSubmitted(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"
-                />
-                <FileCheck size={15} className="text-slate-400" />
-                見積提出済み
-                {project.quoteSubmitted && project.quoteSubmittedAt && (
-                  <span className="ml-auto text-xs text-slate-400">{fmtDate(project.quoteSubmittedAt)}</span>
+              <div className="flex flex-col gap-2 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={!!project.quoteSubmitted}
+                    onChange={(e) => onSetQuoteSubmitted(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"
+                  />
+                  <FileCheck size={15} className="text-slate-400" />
+                  見積提出済み
+                </label>
+                {project.quoteSubmitted && (
+                  <div className="flex items-center gap-2 pl-6">
+                    <label className="whitespace-nowrap text-xs text-slate-500">提出日</label>
+                    <input
+                      type="date"
+                      value={project.quoteSubmittedAt ? project.quoteSubmittedAt.slice(0, 10) : ""}
+                      onChange={(e) => onSetQuoteDate(e.target.value)}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    />
+                    <button
+                      onClick={() => onSetQuoteDate(todayDateStr())}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                    >
+                      今日
+                    </button>
+                  </div>
                 )}
-              </label>
+              </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => onAction("won", project)}
@@ -2477,7 +2507,7 @@ export default function App() {
   function setProjectQuoteSubmitted(project, checked) {
     updateProject(project.id, {
       quoteSubmitted: checked,
-      quoteSubmittedAt: checked ? todayIso() : null,
+      quoteSubmittedAt: checked ? project.quoteSubmittedAt || todayDateStr() : null,
       history: [
         ...project.history,
         {
@@ -2489,6 +2519,10 @@ export default function App() {
       ],
     });
     pushToast(checked ? "見積提出済みにしました" : "見積提出済みを解除しました");
+  }
+
+  function setProjectQuoteDate(project, date) {
+    updateProject(project.id, { quoteSubmittedAt: date });
   }
 
   async function addVisit(form) {
@@ -3040,6 +3074,7 @@ export default function App() {
           onAddNote={(text) => addProgressNote(detail, text)}
           onSetDeliveryDate={(date) => setProjectDeliveryDate(detail, date)}
           onSetQuoteSubmitted={(checked) => setProjectQuoteSubmitted(detail, checked)}
+          onSetQuoteDate={(date) => setProjectQuoteDate(detail, date)}
           relatedVisits={detailVisits}
         />
       )}
