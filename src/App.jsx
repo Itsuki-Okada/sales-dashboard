@@ -1453,7 +1453,7 @@ function SectionCard({ title, note, children, className = "" }) {
     <div className={`rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
       {(title || note) && (
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-          {title && <div className="text-sm font-semibold text-slate-800">{title}</div>}
+          {title && <div className="flex items-center gap-2 text-[15px] font-bold tracking-tight text-slate-900"><span className="h-4 w-1 rounded-full bg-gradient-to-b from-indigo-500 to-violet-500" />{title}</div>}
           {SHOW_HELP_TEXT && note && <div className="text-xs text-slate-400">{note}</div>}
         </div>
       )}
@@ -3289,13 +3289,14 @@ function sinceLabel(dateStr) {
 function StatTile({ label, value, unit, sub, tone = "text-slate-900" }) {
   const narrow = useWindowWidth() < 640;
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-1 whitespace-nowrap tabular-nums ${tone}`} style={{ ...NUM_FONT_STYLE, fontWeight: 500, fontSize: narrow ? 22 : 28, lineHeight: 1.1 }}>
+    <div className="app-lift relative overflow-hidden rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <span className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-gradient-to-br from-indigo-50 to-violet-50" />
+      <div className="relative text-xs font-medium text-slate-500">{label}</div>
+      <div className={`relative mt-1 whitespace-nowrap tabular-nums ${tone}`} style={{ ...NUM_FONT_STYLE, fontWeight: 700, fontSize: narrow ? 22 : 28, lineHeight: 1.1 }}>
         {value}
         {unit && <span className="ml-1 text-sm font-semibold">{unit}</span>}
       </div>
-      {sub && <div className="mt-1 text-[11px] text-slate-400">{sub}</div>}
+      {sub && <div className="relative mt-1 text-[11px] text-slate-400">{sub}</div>}
     </div>
   );
 }
@@ -6862,6 +6863,19 @@ function ThemeSwitcher({ theme, onChange }) {
   );
 }
 
+// ページ見出しの上に出す小さな英字
+const PAGE_EYEBROW = {
+  dashboard: "Dashboard",
+  analysis: "Analytics",
+  monthly: "Monthly Status",
+  stock: "Recurring Revenue",
+  yearly: "Annual Revenue",
+  monthlyRevenue: "Monthly Revenue",
+  companies: "Clients",
+  visits: "Visits",
+  undecided: "Pipeline",
+  reference: "Reference Quotes",
+};
 const PAGE_META = {
   dashboard: ["ダッシュボード", "月ごとの売上と目標の進み具合、気をつける案件をまとめて確認できます。"],
   analysis: ["受注率分析", "肌感・担当者・カテゴリーごとに、受注率と金額を比べられます。"],
@@ -7813,7 +7827,8 @@ export default function App() {
           )}
           {PAGE_META[view] && !(view === "companies" && companyJump) && (
             <div className="mx-auto mb-5 max-w-6xl">
-              <h1 data-view={view} className="app-title text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl"><span className="app-title-text">{PAGE_META[view][0]}</span></h1>
+              <div className="app-eyebrow">{PAGE_EYEBROW[view] || ""}</div>
+              <h1 data-view={view} className="app-title mt-1 text-xl font-semibold tracking-tight text-slate-900 sm:text-[28px]"><span className="app-title-text">{PAGE_META[view][0]}</span></h1>
               {SHOW_HELP_TEXT && <p className="mt-1 text-sm text-slate-500">{PAGE_META[view][1]}</p>}
             </div>
           )}
