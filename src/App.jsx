@@ -1507,31 +1507,37 @@ function MonthSection({ month, projects, defaultOpen, onAction, onOpenDetail }) 
   if (projects.length === 0) return null;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-5 py-4"
+        className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-4 transition-colors hover:bg-slate-50/60"
       >
-        <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+        <div className="flex shrink-0 items-center gap-3 whitespace-nowrap">
+          <span className="flex h-11 w-11 flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-sm">
+            <span className="text-[9px] font-semibold leading-none opacity-80">{month.slice(0, 4)}</span>
+            <span className="text-base font-bold leading-tight" style={{ fontFamily: "var(--font-num)" }}>{Number(month.slice(5))}月</span>
+          </span>
+          <span className="text-left">
+            <span className="block text-sm font-bold text-slate-900">{monthLabel(month)}</span>
+            <span className="block text-xs text-slate-400">{projects.length}件の案件</span>
+          </span>
           {open ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
-          <span className="text-sm font-semibold text-slate-900">{monthLabel(month)}</span>
-          <span className="text-xs text-slate-400">{projects.length}件</span>
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-          <span>受注 <b className="text-emerald-600">{counts.won}</b></span>
-          <span>ロスト <b className="text-rose-600">{counts.lost}</b></span>
-          <span>受注率 <b className="text-slate-800">{counts.rate ?? "—"}{counts.rate !== null ? "%" : ""}</b></span>
-          <span>見込み <b className="text-amber-600">{formatManYen(counts.estimatedTotal)}</b></span>
-          <span>確定 <b className="text-emerald-600">{formatManYen(counts.confirmedTotal)}</b></span>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+          <span className="rounded-full bg-emerald-50 px-2.5 py-1">受注 <b className="text-emerald-600">{counts.won}</b></span>
+          <span className="rounded-full bg-rose-50 px-2.5 py-1">ロスト <b className="text-rose-600">{counts.lost}</b></span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1">受注率 <b className="text-slate-800">{counts.rate ?? "—"}{counts.rate !== null ? "%" : ""}</b></span>
+          <span className="rounded-full bg-amber-50 px-2.5 py-1">見込み <b className="text-amber-600">{formatManYen(counts.estimatedTotal)}</b></span>
+          <span className="rounded-full bg-emerald-50 px-2.5 py-1">確定 <b className="text-emerald-600">{formatManYen(counts.confirmedTotal)}</b></span>
         </div>
       </button>
       {open && (
-        <div className="border-t border-slate-200">
+        <div className="border-t border-slate-100">
           {/* デスクトップ・タブレット：テーブル表示 */}
           <div className="hidden overflow-x-auto sm:block">
             <table className="w-full min-w-[840px] text-sm">
               <thead>
-                <tr className="text-left text-xs text-slate-400">
+                <tr className="bg-slate-50/80 text-left text-[11px] font-semibold tracking-wide text-slate-400">
                   <th className="px-5 py-2 font-medium">客先</th>
                   <th className="px-3 py-2 font-medium">案件</th>
                   <th className="px-3 py-2 font-medium">内容</th>
@@ -1547,7 +1553,7 @@ function MonthSection({ month, projects, defaultOpen, onAction, onOpenDetail }) 
                 {projects.map((p) => (
                   <tr
                     key={p.id}
-                    className={`cursor-pointer border-t ${missingFrame(p) ? "border-rose-200 bg-rose-50/50 outline outline-2 -outline-offset-2 outline-rose-400" : "border-slate-100 hover:bg-slate-50/60"}`}
+                    className={`cursor-pointer border-t transition-colors ${missingFrame(p) ? "border-rose-200 bg-rose-50/50 outline outline-2 -outline-offset-2 outline-rose-400" : "border-slate-100 hover:bg-indigo-50/40"}`}
                     onClick={() => onOpenDetail(p)}
                   >
                     <td className="max-w-[260px] truncate px-5 py-3 font-semibold text-slate-900">{p.clientName}</td>
@@ -2659,16 +2665,17 @@ function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [
           setShowPrevEdit(false);
         }}
       />
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-2 pl-4 shadow-sm">
-        <div className="text-sm text-slate-600">
-          表示する期 <span className="text-xs text-slate-400">（8月〜翌年7月で1期）</span>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-slate-200 bg-white p-2 pl-4 shadow-sm">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><CalendarDays size={14} /></span>
+          表示する期 <span className="text-xs font-normal text-slate-400">（8月〜翌年7月で1期）</span>
         </div>
-        <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
+        <div className="inline-flex rounded-full bg-slate-100 p-1">
           {fyOptions.map((k) => (
             <button
               key={k}
               onClick={() => setFy(k)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${fy === k ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all ${fy === k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
             >
               {k === curFy ? "今期" : "前期"}（{fiscalLabel(k)}）
             </button>
@@ -2767,8 +2774,8 @@ function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [
 
       {/* 月別の一覧（今期・前年・目標を並べて比較） */}
       <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pb-3 pt-5">
-          <div className="text-sm font-semibold text-slate-800">月別サマリー（{fiscalLabel(fy)}）</div>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 pb-4 pt-5">
+          <div className="flex items-center gap-2 text-[15px] font-bold tracking-tight text-slate-900"><span className="h-4 w-1 rounded-full bg-gradient-to-b from-indigo-500 to-violet-500" />月別サマリー<span className="text-xs font-normal text-slate-400">{fiscalLabel(fy)}</span></div>
           {SHOW_HELP_TEXT && <div className="text-xs text-slate-400">金額は万円・前年比は前年同月との比較</div>}
           {onSavePrevManual && (
             <button onClick={() => setShowPrevEdit(true)} className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
@@ -2780,7 +2787,7 @@ function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-sm">
             <thead>
-              <tr className="border-y border-slate-100 bg-slate-50/70 text-left text-[11px] font-medium text-slate-500">
+              <tr className="border-y border-slate-100 bg-slate-50/80 text-left text-[11px] font-semibold tracking-wide text-slate-400">
                 <th className="px-5 py-2.5 font-medium">月</th>
                 <th className="px-3 py-2.5 text-right font-medium">売上</th>
                 <th className="px-3 py-2.5 text-right font-medium">前年同月</th>
@@ -2797,10 +2804,10 @@ function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [
                 const rate = r.target > 0 ? Math.round((r.confirmedTotal / r.target) * 100) : null;
                 const diff = r.target > 0 ? r.confirmedTotal - r.target : null;
                 return (
-                  <tr key={r.month} className={`border-b border-slate-100 last:border-b-0 ${isNow ? "bg-indigo-50/50" : ""} ${r.isFuture ? "text-slate-400" : ""}`}>
+                  <tr key={r.month} className={`border-b border-slate-100 transition-colors last:border-b-0 hover:bg-slate-50/70 ${isNow ? "bg-gradient-to-r from-indigo-50 via-violet-50/60 to-transparent" : ""} ${r.isFuture ? "text-slate-400" : ""}`}>
                     <td className="whitespace-nowrap px-5 py-3">
                       <div className="flex items-center gap-2">
-                        <span className={`font-semibold ${r.isFuture ? "text-slate-400" : "text-slate-800"}`}>{Number(r.month.slice(5))}月</span>
+                        <span className={`flex h-8 w-10 items-center justify-center rounded-xl text-sm font-bold tabular-nums ${isNow ? "bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-sm" : r.isFuture ? "bg-slate-50 text-slate-400" : "bg-slate-100 text-slate-700"}`} style={NUM_FONT_STYLE}>{Number(r.month.slice(5))}月</span>
                         <span className="text-[11px] text-slate-400">{r.month.slice(0, 4)}</span>
                         {isNow && <span className="rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-medium text-white">今月</span>}
                         {r.isActual && <span className="rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700">実績</span>}
@@ -2816,9 +2823,10 @@ function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [
                         <span className="text-xs text-slate-300">—</span>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
-                            <div className="h-full rounded-full" style={{ width: `${Math.min(100, rate)}%`, background: rate >= 100 ? "#059669" : "#6366f1" }} />
+                          <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full" style={{ width: `${Math.min(100, rate)}%`, background: rate >= 100 ? "linear-gradient(90deg,#10b981,#059669)" : "linear-gradient(90deg,#818cf8,#4f46e5)" }} />
                           </div>
+                          {rate >= 100 && <Trophy size={12} className="text-emerald-500" />}
                           <span className={`w-10 text-xs font-semibold tabular-nums ${rate >= 100 ? "text-emerald-600" : "text-slate-700"}`}>{rate}%</span>
                         </div>
                       )}
@@ -2838,7 +2846,7 @@ function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-slate-200 bg-slate-50/70 text-sm">
+              <tr className="border-t-2 border-slate-200 bg-gradient-to-r from-slate-50 to-indigo-50/40 text-sm">
                 <td className="px-5 py-3 font-semibold text-slate-700">期の合計</td>
                 <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-900" style={NUM_FONT_STYLE}>{fmtMan(fyTotal)}</td>
                 <td className="px-3 py-3 text-right tabular-nums text-slate-500" style={NUM_FONT_STYLE}>{fmtMan(prevFyTotal)}</td>
@@ -3286,12 +3294,20 @@ function sinceLabel(dateStr) {
   return `${Math.floor(n / 365)}年以上前`;
 }
 
-function StatTile({ label, value, unit, sub, tone = "text-slate-900" }) {
+function StatTile({ label, value, unit, sub, tone = "text-slate-900", icon: Icon = null, accent = "#6366f1" }) {
   const narrow = useWindowWidth() < 640;
   return (
     <div className="app-lift relative overflow-hidden rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <span className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-gradient-to-br from-indigo-50 to-violet-50" />
-      <div className="relative text-xs font-medium text-slate-500">{label}</div>
+      <span className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full" style={{ background: `${accent}12` }} />
+      <span className="pointer-events-none absolute -right-2 top-10 h-10 w-10 rounded-full" style={{ background: `${accent}0d` }} />
+      <div className="relative flex items-center gap-2 text-xs font-medium text-slate-500">
+        {Icon && (
+          <span className="flex h-7 w-7 items-center justify-center rounded-xl" style={{ background: `${accent}18`, color: accent }}>
+            <Icon size={14} />
+          </span>
+        )}
+        {label}
+      </div>
       <div className={`relative mt-1 whitespace-nowrap tabular-nums ${tone}`} style={{ ...NUM_FONT_STYLE, fontWeight: 700, fontSize: narrow ? 22 : 28, lineHeight: 1.1 }}>
         {value}
         {unit && <span className="ml-1 text-sm font-semibold">{unit}</span>}
@@ -3458,22 +3474,15 @@ function CompanyListPage({ projects, onOpenDetail, visits, onAddVisit, stocks = 
   if (!selected) {
     return (
       <div className="flex flex-col gap-5">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatTile label="取引のある会社" value={totals.companies} unit="社" />
-          <StatTile label="進行中の案件がある会社" value={totals.activeCompanies} unit="社" tone="text-indigo-600" />
-          <StatTile label={`${thisYear}年の確定金額`} value={Math.round(totals.yearConfirmed / 10000).toLocaleString("ja-JP")} unit="万円" tone="text-emerald-600" />
-          <StatTile label="ストック契約のある会社" value={totals.stockCompanies} unit="社" tone="text-violet-600" />
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
-              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <span className="pointer-events-none absolute left-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-xl bg-indigo-50 text-indigo-500"><Search size={14} /></span>
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="会社名・案件名で検索"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:border-indigo-300 focus:bg-white focus:outline-none"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-11 pr-3 text-sm transition-colors focus:border-indigo-300 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-50"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -3481,7 +3490,7 @@ function CompanyListPage({ projects, onOpenDetail, visits, onAddVisit, stocks = 
               <select
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value)}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 focus:outline-none"
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:outline-none"
               >
                 <option value="recent">最近動きがあった順</option>
                 <option value="confirmed">確定金額が大きい順</option>
@@ -3490,13 +3499,13 @@ function CompanyListPage({ projects, onOpenDetail, visits, onAddVisit, stocks = 
               </select>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-3 flex flex-wrap gap-1">
             {["全て", "あ", "か", "さ", "た", "な", "は", "ま", "や", "ら", "わ"].map((row) => (
               <button
                 key={row}
                 onClick={() => setKanaFilter(row)}
-                className={`min-w-[36px] rounded-full px-3 py-1 text-xs font-medium ${
-                  kanaFilter === row ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                className={`h-8 min-w-[36px] rounded-xl px-3 text-xs font-semibold transition-all active:scale-95 ${
+                  kanaFilter === row ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:-translate-y-px hover:bg-slate-100"
                 }`}
               >
                 {row}
@@ -3505,17 +3514,25 @@ function CompanyListPage({ projects, onOpenDetail, visits, onAddVisit, stocks = 
           </div>
         </div>
 
-        <div className="text-xs text-slate-400">{visible.length}社を表示中</div>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <span className="rounded-full bg-white px-2.5 py-1 font-bold text-slate-800 shadow-sm ring-1 ring-slate-200">{visible.length}社</span>
+          を表示中
+        </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {visible.map((c) => (
             <button
               key={c.name}
               onClick={() => setSelected(c.name)}
-              className="flex flex-col gap-4 rounded-[22px] border border-slate-200 bg-white p-5 text-left shadow-sm transition-colors hover:border-indigo-300"
+              className="app-lift group relative flex flex-col gap-4 overflow-hidden rounded-[22px] border border-slate-200 bg-white p-5 text-left shadow-sm hover:border-indigo-200"
             >
-              <div className="flex items-center gap-3">
-                <Avatar name={c.name} size={40} />
+              {/* 会社ごとの色の飾り */}
+              <span className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full transition-transform duration-500 group-hover:scale-110" style={{ background: `${colorFor(c.name)}14` }} />
+              <span className="pointer-events-none absolute right-8 -top-4 h-10 w-10 rounded-full" style={{ background: `${colorFor(c.name)}10` }} />
+              <div className="relative flex items-center gap-3">
+                <span className="rounded-full p-0.5 transition-transform duration-300 group-hover:rotate-[-6deg] group-hover:scale-105" style={{ background: `linear-gradient(135deg, ${colorFor(c.name)}, ${colorFor(c.name)}55)` }}>
+                  <span className="block rounded-full ring-2 ring-white"><Avatar name={c.name} size={40} /></span>
+                </span>
                 <div className="min-w-0">
                   <div className="text-[11px] text-slate-400">{corpPrefix(c.name) || "　"}</div>
                   <div className="truncate text-[15px] font-semibold text-slate-900">{companyDisplayName(c.name)}</div>
@@ -3525,7 +3542,7 @@ function CompanyListPage({ projects, onOpenDetail, visits, onAddVisit, stocks = 
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-50 px-3 py-2.5 text-center">
+              <div className="relative grid grid-cols-3 gap-2 rounded-2xl bg-slate-50/90 px-3 py-2.5 text-center ring-1 ring-inset ring-slate-100">
                 <div>
                   <div className="text-[11px] text-slate-500">案件</div>
                   <div className="tabular-nums text-slate-800" style={{ ...NUM_FONT_STYLE, fontWeight: 500, fontSize: 20 }}>{c.total}</div>
@@ -3547,10 +3564,10 @@ function CompanyListPage({ projects, onOpenDetail, visits, onAddVisit, stocks = 
                 </div>
               </div>
 
-              <div className="flex items-end justify-between gap-3">
+              <div className="relative flex items-end justify-between gap-3">
                 <div>
                   <div className="text-[11px] text-slate-500">確定金額（累計）</div>
-                  <div className="tabular-nums text-emerald-700" style={{ ...NUM_FONT_STYLE, fontWeight: 500, fontSize: 24, lineHeight: 1.1 }}>
+                  <div className="tabular-nums text-emerald-700" style={{ ...NUM_FONT_STYLE, fontWeight: 700, fontSize: 26, lineHeight: 1.1 }}>
                     {Math.round(c.confirmedTotal / 10000).toLocaleString("ja-JP")}
                     <span className="ml-0.5 text-xs font-semibold">万円</span>
                   </div>
@@ -3563,7 +3580,7 @@ function CompanyListPage({ projects, onOpenDetail, visits, onAddVisit, stocks = 
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs">
+              <div className="relative flex items-center justify-between gap-2 border-t border-dashed border-slate-200 pt-3 text-xs">
                 <span className="flex items-center gap-1.5 text-slate-500">
                   <MapPin size={13} className={c.lastVisit ? "text-indigo-500" : "text-slate-300"} />
                   {c.lastVisit ? `最終訪問 ${fmtDate(c.lastVisit)}（${sinceLabel(c.lastVisit)}）` : "訪問記録なし"}
@@ -3796,11 +3813,12 @@ function AiBuddyLink() {
       href={AI_BUDDY_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 hover:border-slate-300 hover:bg-slate-50"
+      className="group relative mt-3 flex items-center gap-2 overflow-hidden rounded-2xl border border-slate-200 bg-white px-3 py-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
       title="AI BUDDYを開く"
     >
-      <img src={`${import.meta.env.BASE_URL}aibuddy-logo.svg`} alt="AI BUDDY" className="h-3.5 w-auto" />
-      <ExternalLink size={13} className="ml-auto text-slate-400" />
+      <span className="pointer-events-none absolute -right-6 -top-6 h-16 w-16 rounded-full bg-gradient-to-br from-indigo-100 to-violet-100 opacity-70 transition-transform duration-500 group-hover:scale-125" />
+      <img src={`${import.meta.env.BASE_URL}aibuddy-logo.svg`} alt="AI BUDDY" className="relative h-3.5 w-auto" />
+      <ExternalLink size={13} className="relative ml-auto text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-indigo-500" />
     </a>
   );
 }
@@ -5413,14 +5431,14 @@ function StockPage({ stocks, companies, assignees, onAdd, onUpdate, onDelete, on
   return (
     <div className="flex flex-col gap-5">
       {/* 月の切り替え（選んだ月の内容が下の金額・件数に反映される） */}
-      <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-2 rounded-[22px] border border-slate-200 bg-white p-2 shadow-sm sm:flex-row sm:items-center">
         <FiscalYearPicker value={selFy} onChange={(f) => { setSelFy(f); setSelMonth(fiscalPeriods(f).some((p) => p.key === thisMonth) ? thisMonth : f); }} />
         <div className="flex flex-wrap gap-1">
           {fiscalPeriods(selFy).map((p) => (
             <button
               key={p.key}
               onClick={() => setSelMonth(p.key)}
-              className={`min-w-[44px] rounded-lg px-2.5 py-1.5 text-xs font-medium tabular-nums transition-colors ${p.key === selMonth ? "bg-violet-600 text-white shadow-sm" : p.isNow ? "bg-violet-50 text-violet-700 hover:bg-violet-100" : "text-slate-500 hover:bg-slate-100"}`}
+              className={`min-w-[44px] rounded-xl px-2.5 py-1.5 text-xs font-semibold tabular-nums transition-all active:scale-95 ${p.key === selMonth ? "bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-200" : p.isNow ? "bg-violet-50 text-violet-700 hover:bg-violet-100" : "text-slate-500 hover:-translate-y-px hover:bg-slate-100"}`}
               aria-pressed={p.key === selMonth}
             >
               {p.label}
@@ -5429,36 +5447,52 @@ function StockPage({ stocks, companies, assignees, onAdd, onUpdate, onDelete, on
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">
-          <div className="text-xs text-slate-500">{Number(selMonth.slice(0, 4))}年{selNo}月のストック売上{selMonth === thisMonth && <span className="ml-1 rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] text-white">今月</span>}</div>
-          <div className="mt-1 text-xl font-semibold text-violet-700">{formatYen(mrr)}</div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+        {/* 選んだ月のストック売上（メイン） */}
+        <div className="app-lift relative col-span-2 overflow-hidden rounded-[22px] bg-gradient-to-br from-violet-600 via-indigo-600 to-indigo-800 p-5 text-white shadow-md lg:col-span-1">
+          <span className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-white/10" />
+          <span className="pointer-events-none absolute -bottom-12 right-12 h-28 w-28 rounded-full bg-white/10" />
+          <div className="relative flex items-center gap-2 text-xs font-medium text-white/80">
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-white/15"><Repeat size={14} /></span>
+            {Number(selMonth.slice(0, 4))}年{selNo}月のストック売上
+            {selMonth === thisMonth && <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-violet-700">今月</span>}
+          </div>
+          <div className="relative mt-2 tabular-nums" style={{ fontFamily: "var(--font-num)", fontWeight: 700, fontSize: 32, lineHeight: 1.05 }}>{formatYen(mrr)}</div>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs text-slate-500">年換算（{selNo}月×12）</div>
-          <div className="mt-1 text-xl font-semibold text-slate-800">{formatManYen(mrr * 12)}</div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs text-slate-500">{selNo}月の契約数</div>
-          <div className="mt-1 text-xl font-semibold text-slate-800">{activeNow.length}件</div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs text-slate-500">{selNo}月の契約社数</div>
-          <div className="mt-1 text-xl font-semibold text-slate-800">{new Set(activeNow.map((s) => s.clientName)).size}社</div>
-        </div>
+        {[
+          [TrendingUp, "#4f46e5", `年換算（${selNo}月×12）`, formatManYen(mrr * 12)],
+          [FileCheck, "#0891b2", `${selNo}月の契約数`, `${activeNow.length}件`],
+          [Building2, "#059669", `${selNo}月の契約社数`, `${new Set(activeNow.map((s) => s.clientName)).size}社`],
+        ].map(([Ic, col, lb, val]) => (
+          <div key={lb} className="app-lift relative overflow-hidden rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <span className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full" style={{ background: `${col}12` }} />
+            <div className="relative flex items-center gap-2 text-xs font-medium text-slate-500">
+              <span className="flex h-7 w-7 items-center justify-center rounded-xl" style={{ background: `${col}18`, color: col }}><Ic size={14} /></span>
+              {lb}
+            </div>
+            <div className="relative mt-2 tabular-nums text-slate-900" style={{ fontFamily: "var(--font-num)", fontWeight: 700, fontSize: 24, lineHeight: 1.1 }}>{val}</div>
+          </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {byCat.map((c) => (
-          <div key={c.category} className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${c.count === 0 ? "opacity-70" : ""}`}>
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: catColors[c.category] }} />
-              {c.category}
+        {byCat.map((c, ci) => {
+          const col = catColors[c.category];
+          return (
+            <div key={c.category} className={`app-lift relative overflow-hidden rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm ${c.count === 0 ? "opacity-60" : ""}`}>
+              <span className="pointer-events-none absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${col}, ${col}66)` }} />
+              <span className="pointer-events-none absolute -bottom-8 -right-8 h-20 w-20 rounded-full" style={{ background: `${col}12` }} />
+              <div className="relative flex items-center gap-2 text-[13px] font-bold text-slate-700">
+                <span className="flex h-7 w-7 items-center justify-center rounded-xl text-white" style={{ background: `linear-gradient(135deg, ${col}, ${col}bb)` }}>
+                  {c.category === AI_BUDDY ? <Sparkles size={13} /> : <Repeat size={12} />}
+                </span>
+                <span className="truncate">{c.category}</span>
+              </div>
+              <div className="relative mt-2 tabular-nums text-slate-900" style={{ fontFamily: "var(--font-num)", fontWeight: 700, fontSize: 20 }}>{formatYen(c.amount)}<span className="text-xs font-normal text-slate-400"> /月</span></div>
+              <span className="relative mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: `${col}14`, color: col }}>{c.count}件</span>
             </div>
-            <div className="mt-1 text-lg font-semibold text-slate-800">{formatYen(c.amount)}<span className="text-xs font-normal text-slate-400"> /月</span></div>
-            <div className="text-xs text-slate-400">{c.count}件</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <StockTrendChart stocks={stocks} />
@@ -5469,17 +5503,19 @@ function StockPage({ stocks, companies, assignees, onAdd, onUpdate, onDelete, on
             <button
               key={c}
               onClick={() => setCatFilter(c)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium ${catFilter === c ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 ${catFilter === c ? "text-white shadow-sm" : "border border-slate-200 bg-white text-slate-500 hover:-translate-y-px hover:bg-slate-50"}`}
+              style={catFilter === c ? { background: c === "all" ? "linear-gradient(135deg,#0f172a,#1e1b4b)" : `linear-gradient(135deg, ${STOCK_COLORS[c]}, ${STOCK_COLORS[c]}cc)` } : undefined}
             >
+              {c !== "all" && <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: catFilter === c ? "#fff" : STOCK_COLORS[c] }} />}
               {c === "all" ? "全て" : c}
             </button>
           ))}
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => setShowUnyo(true)} className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+          <button onClick={() => setShowUnyo(true)} className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50">
             <Upload size={16} />運用売上CSVを読み込む
           </button>
-          <button onClick={() => setEditing("new")} className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+          <button onClick={() => setEditing("new")} className="flex items-center gap-1.5 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-md shadow-indigo-200 hover:brightness-110">
             <Plus size={16} />ストックを追加
           </button>
         </div>
@@ -5506,7 +5542,8 @@ function StockPage({ stocks, companies, assignees, onAdd, onUpdate, onDelete, on
                 <span className="h-px flex-1 bg-rose-200" />
               </div>
             )}
-            <div className={`flex items-center justify-between gap-3 rounded-xl border p-3.5 shadow-sm ${ended ? "border-slate-200 bg-slate-50 opacity-70" : planned ? "border-dashed border-amber-200 bg-amber-50/30" : "border-slate-200 bg-white"}`}>
+            <div className={`app-lift relative flex items-center justify-between gap-3 overflow-hidden rounded-2xl border py-3.5 pl-5 pr-3.5 shadow-sm ${ended ? "border-slate-200 bg-slate-50 opacity-70" : planned ? "border-dashed border-amber-200 bg-amber-50/30" : "border-slate-200 bg-white"}`}>
+              <span className="pointer-events-none absolute inset-y-0 left-0 w-1.5" style={{ background: STOCK_COLORS[stockGroupOf(st.category)] || "#94a3b8", opacity: ended ? 0.4 : 1 }} />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate text-sm font-semibold text-slate-900">{st.clientName}</span>
@@ -5525,7 +5562,7 @@ function StockPage({ stocks, companies, assignees, onAdd, onUpdate, onDelete, on
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <div className={`pr-2 text-right text-sm font-semibold tabular-nums ${ended ? "text-slate-400 line-through" : planned ? "text-slate-400" : "text-violet-700"}`}>{formatYen(st.monthlyAmount)}<span className="text-[10px] font-normal text-slate-400">/月</span></div>
+                <div className={`pr-2 text-right tabular-nums ${ended ? "text-slate-400 line-through" : planned ? "text-slate-400" : "text-violet-700"}`} style={{ fontFamily: "var(--font-num)", fontWeight: 700, fontSize: 16 }}>{formatYen(st.monthlyAmount)}<span className="text-[10px] font-normal text-slate-400">/月</span></div>
                 <button onClick={() => setEditing(st)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><Pencil size={15} /></button>
                 <button onClick={() => onDelete(st)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-rose-500"><Trash2 size={15} /></button>
               </div>
@@ -7555,15 +7592,15 @@ export default function App() {
                   setMonthlyNavOpen(false);
                 }
               }}
-              className={`app-nav flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium ${groupActive ? "is-active bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50"}`}
+              className={`app-nav flex w-full items-center gap-2.5 rounded-2xl px-2 py-1.5 text-sm font-medium ${groupActive ? "is-active bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50"}`}
               aria-expanded={open}
             >
-              <item.icon size={16} />
+              <span className={`app-nav-icon flex h-8 w-8 items-center justify-center rounded-xl ${groupActive ? "bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-200" : "bg-slate-100 text-slate-500"}`}><item.icon size={15} /></span>
               {item.label}
               <ChevronDown size={14} className={`ml-auto transition-transform ${open ? "rotate-180" : ""}`} />
             </button>
             {open && (
-              <div className="ml-5 mt-1 flex flex-col gap-0.5 border-l border-slate-200 pl-2">
+              <div className="ml-6 mt-1 flex flex-col gap-0.5 border-l-2 border-dashed border-indigo-100 pl-2">
                 {item.sub.map((sub) => (
                   <button
                     key={sub.key}
@@ -7572,7 +7609,7 @@ export default function App() {
                       setView(sub.key);
                       afterSelect();
                     }}
-                    className={`app-subnav flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] ${view === sub.key ? "is-active bg-slate-100 font-semibold text-slate-900" : "text-slate-500 hover:bg-slate-50"}`}
+                    className={`app-subnav flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-[13px] transition-colors ${view === sub.key ? "is-active bg-white font-semibold text-slate-900 shadow-sm ring-1 ring-slate-200" : "text-slate-500 hover:bg-slate-50"}`}
                   >
                     {sub.key === "undecided" ? <Clock3 size={14} /> : <FileText size={14} />}
                     {sub.label}
@@ -7606,19 +7643,19 @@ export default function App() {
               setView(item.key);
               afterSelect();
             }}
-            className={`app-nav flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium ${
+            className={`app-nav group flex w-full items-center gap-2.5 rounded-2xl px-2 py-1.5 text-sm font-medium ${
               active ? "is-active bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50"
             }`}
             aria-expanded={isMonthly ? expanded : undefined}
           >
-            <item.icon size={16} />
+            <span className={`app-nav-icon flex h-8 w-8 items-center justify-center rounded-xl transition-all duration-300 ${active ? "bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-200" : "bg-slate-100 text-slate-500 group-hover:rotate-[-8deg] group-hover:bg-white group-hover:text-indigo-500 group-hover:shadow-sm"}`}><item.icon size={15} /></span>
             {item.label}
             {isMonthly && (
               <ChevronDown size={14} className={`ml-auto transition-transform ${expanded ? "rotate-180" : ""}`} />
             )}
           </button>
           {isMonthly && expanded && (
-            <div className="ml-5 mt-1 flex flex-col gap-0.5 border-l border-slate-200 pl-2">
+            <div className="ml-6 mt-1 flex flex-col gap-0.5 border-l-2 border-dashed border-indigo-100 pl-2">
               {[{ key: "all", label: "全体" }, ...assigneeNames.map((a) => ({ key: a, label: a }))].map((sub) => {
                 const subActive = active && (monthlyScope === sub.key || (sub.key === "all" && !assigneeNames.includes(monthlyScope)));
                 return (
@@ -7631,7 +7668,7 @@ export default function App() {
                       afterSelect();
                     }}
                     className={`app-subnav flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] ${
-                      subActive ? "is-active bg-slate-100 font-semibold text-slate-900" : "text-slate-500 hover:bg-slate-50"
+                      subActive ? "is-active bg-white font-semibold text-slate-900 shadow-sm ring-1 ring-slate-200" : "text-slate-500 hover:bg-slate-50"
                     }`}
                   >
                     {sub.key === "all" ? (
@@ -7674,11 +7711,11 @@ export default function App() {
     <div className="app-root flex min-h-screen bg-slate-50 text-slate-900">
       {/* Sidebar (デスクトップ) */}
       <aside className="app-sidebar sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-slate-200 bg-white p-4 sm:flex">
-        <div className="mb-6 flex items-center gap-2.5 px-2">
-          <BrandLogo size={32} className="app-logo" />
+        <div className="mb-6 flex items-center gap-2.5 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/60 px-2.5 py-2.5 ring-1 ring-inset ring-slate-100">
+          <BrandLogo size={34} className="app-logo transition-transform duration-500 hover:rotate-[-10deg]" />
           <div>
-            <div className="text-[15px] font-semibold tracking-tight text-slate-900">案件管理</div>
-            <div className="text-[10px] text-slate-400">Sales Dashboard</div>
+            <div className="text-[15px] font-bold tracking-tight text-slate-900">案件管理</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-indigo-400">Sales Dashboard</div>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
@@ -7914,37 +7951,45 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <StatTile label="全体の案件数" value={overallKpi.total} unit="件" sub={`進行中 ${overallKpi.active}件`} />
-                <StatTile label="全体の受注率" value={overallKpi.rate ?? "—"} unit={overallKpi.rate !== null ? "%" : ""} tone="text-indigo-600" sub={`受注 ${overallKpi.won}・ロスト ${overallKpi.lost}`} />
-                <StatTile label="見込み金額（全体）" value={Math.round((overallKpi.estimatedTotal + undecidedProjects.filter((p) => p.status === "active").reduce((a, p) => a + (Number(p.estimatedAmount) || 0), 0)) / 10000).toLocaleString("ja-JP")} unit="万円" tone="text-amber-600" sub="進行中の案件の合計（受注月未定を含む）" />
-                <StatTile label="確定金額（全体）" value={Math.round(overallKpi.confirmedTotal / 10000).toLocaleString("ja-JP")} unit="万円" tone="text-emerald-600" sub="受注＋納品済み" />
+                <StatTile icon={Layers} accent="#475569" label="全体の案件数" value={overallKpi.total} unit="件" sub={`進行中 ${overallKpi.active}件`} />
+                <StatTile icon={Target} accent="#4f46e5" label="全体の受注率" value={overallKpi.rate ?? "—"} unit={overallKpi.rate !== null ? "%" : ""} tone="text-indigo-600" sub={`受注 ${overallKpi.won}・ロスト ${overallKpi.lost}`} />
+                <StatTile icon={TrendingUp} accent="#d97706" label="見込み金額（全体）" value={Math.round((overallKpi.estimatedTotal + undecidedProjects.filter((p) => p.status === "active").reduce((a, p) => a + (Number(p.estimatedAmount) || 0), 0)) / 10000).toLocaleString("ja-JP")} unit="万円" tone="text-amber-600" sub="進行中の案件の合計（受注月未定を含む）" />
+                <StatTile icon={CheckCircle2} accent="#059669" label="確定金額（全体）" value={Math.round(overallKpi.confirmedTotal / 10000).toLocaleString("ja-JP")} unit="万円" tone="text-emerald-600" sub="受注＋納品済み" />
               </div>
 
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="mr-1 text-xs text-slate-400">カテゴリ</span>
-                  {["全体", ...CATEGORIES].map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => setActiveCategory(c)}
-                      className={`rounded-full px-3 py-1 text-xs font-medium ${activeCategory === c ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
-                    >
-                      {c}
-                    </button>
-                  ))}
+                  <span className="mr-1 w-12 text-[11px] font-bold tracking-wider text-slate-400">カテゴリ</span>
+                  {["全体", ...CATEGORIES].map((c) => {
+                    const on = activeCategory === c;
+                    const col = PROJECT_CAT_COLORS[c] || "#0f172a";
+                    return (
+                      <button
+                        key={c}
+                        onClick={() => setActiveCategory(c)}
+                        className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 ${on ? "text-white shadow-sm" : "border border-slate-200 bg-white text-slate-500 hover:-translate-y-px hover:bg-slate-50"}`}
+                        style={on ? { background: c === "全体" ? "linear-gradient(135deg,#0f172a,#1e1b4b)" : `linear-gradient(135deg, ${col}, ${col}cc)` } : undefined}
+                      >
+                        {c !== "全体" && <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: on ? "#fff" : col }} />}
+                        {c}
+                      </button>
+                    );
+                  })}
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="mr-1 text-xs text-slate-400">状態</span>
-                    {STATUS_FILTERS.map((st) => (
-                      <button
-                        key={st.key}
-                        onClick={() => setStatusFilter(st.key)}
-                        className={`rounded-full px-3 py-1 text-xs font-medium ${statusFilter === st.key ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
-                      >
-                        {st.label}
-                      </button>
-                    ))}
+                    <span className="mr-1 w-12 text-[11px] font-bold tracking-wider text-slate-400">状態</span>
+                    <div className="inline-flex flex-wrap gap-0.5 rounded-full bg-slate-100 p-0.5">
+                      {STATUS_FILTERS.map((st) => (
+                        <button
+                          key={st.key}
+                          onClick={() => setStatusFilter(st.key)}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${statusFilter === st.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                        >
+                          {st.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs text-slate-500">
                     <ArrowUpDown size={14} className="text-slate-400" />
@@ -7962,17 +8007,17 @@ export default function App() {
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-slate-800">{listAll ? "全ての月の案件" : `${monthLabel(dashMonth)}の案件`}</div>
-                <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
+                <div className="flex items-center gap-2 text-[15px] font-bold tracking-tight text-slate-900"><span className="h-4 w-1 rounded-full bg-gradient-to-b from-indigo-500 to-violet-500" />{listAll ? "全ての月の案件" : `${monthLabel(dashMonth)}の案件`}</div>
+                <div className="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm">
                   <button
                     onClick={() => setListAll(false)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${!listAll ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                    className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${!listAll ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
                   >
                     {Number(dashMonth.slice(5))}月のみ
                   </button>
                   <button
                     onClick={() => setListAll(true)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${listAll ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                    className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${listAll ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
                   >
                     全ての月
                   </button>
