@@ -769,13 +769,14 @@ const REVENUE_EXTRA_COLORS = { [BASE_REVENUE_LABEL]: "#475569", [STOCK_REVENUE_L
 
 // 金額表示（赤枠・月間売上反映済に対応）
 function amountInfo(p) {
+  if (p.isReference) return { text: "—", cls: "text-slate-400 text-sm" };
   if (p.reflectedInMonthly) return { text: "月間売上反映済", cls: "text-emerald-600 text-xs font-medium" };
   if (p.amountMissing && !(p.status === "won" || p.status === "delivered" ? Number(p.confirmedAmount) : Number(p.estimatedAmount)))
     return { text: "金額未記入", cls: "text-rose-600 text-xs font-semibold" };
   const v = p.status === "won" || p.status === "delivered" ? p.confirmedAmount ?? p.estimatedAmount : p.estimatedAmount;
   return { text: formatManYen(v), cls: "" };
 }
-const missingFrame = (p) => p.amountMissing && !p.reflectedInMonthly && !(Number(p.estimatedAmount) || Number(p.confirmedAmount));
+const missingFrame = (p) => !p.isReference && p.amountMissing && !p.reflectedInMonthly && !(Number(p.estimatedAmount) || Number(p.confirmedAmount));
 
 function salesItemToProject(x, source) {
   const now = todayIso();
@@ -814,7 +815,8 @@ function salesItemToProject(x, source) {
   } else if (source === "plan") {
     extra = { status: "active", confidence: 3, estimatedAmount: x.amount || 0, confirmedAmount: null };
   } else if (x.stage === "reference") {
-    extra = { status: "active", confidence: 1, isReference: true, estimatedAmount: x.amount || 0, confirmedAmount: null };
+    // 参考見積りは金額に入れない（CSVの売上見込額はメモにだけ残す）
+    extra = { status: "active", confidence: 1, isReference: true, estimatedAmount: 0, confirmedAmount: null, amountMissing: false, memo: x.amount ? `参考見積額：${formatManYen(x.amount)}` : "" };
   } else if (x.stage === "won") {
     extra = { status: "won", confidence: 2, estimatedAmount: x.amount || 0, confirmedAmount: x.amount || 0 };
   } else if (x.stage === "lost") {
@@ -823,8 +825,9 @@ function salesItemToProject(x, source) {
     extra = { status: "active", confidence: 2, estimatedAmount: x.amount || 0, confirmedAmount: null };
   }
   const p = { ...base, ...extra };
-  // 受注月未定の案件はすべてCOOL
+  // 受注月未定の案件はすべてCOOL。アタックリストは受注予定日・売上見込額のどちらかが空欄ならCOOL
   if (!p.scheduledMonth) p.confidence = 1;
+  if (source === "attack" && !x.amount) p.confidence = 1;
   p.history = [{ id: uid(), date: now, type: "created", label: source === "plan" ? "売上計画CSVから登録" : "アタックリストCSVから登録", scheduledMonth: p.scheduledMonth }];
   if (p.status === "won" || p.status === "delivered") p.history.push({ id: uid(), date: now, type: "won", label: "受注", previousStatus: "active" });
   if (p.status === "lost") p.history.push({ id: uid(), date: now, type: "lost", label: "ロスト", previousStatus: "active" });
@@ -862,6 +865,7 @@ function applySalesDiff(projects, diff) {
     const patch = {};
     SALES_COMPARE_FIELDS.forEach((f) => (patch[f] = c.next[f]));
     patch.amountMissing = c.next.amountMissing;
+    if (c.next.isReference && c.next.memo && !p.memo) patch.memo = c.next.memo;
     patch.category = p.category === "未設定" ? c.next.category : p.category;
     const notes = c.progressChanged ? [...(p.progressNotes || []), ...c.next.progressNotes] : p.progressNotes;
     return {
@@ -872,7 +876,8 @@ function applySalesDiff(projects, diff) {
       history: [...(p.history || []), { id: uid(), date: now, type: "updated", label: `CSVで更新（${c.fields.length ? c.fields.length + "項目" : "進捗"}）` }],
     };
   });
-  return [...out, ...diff.added];
+  const removedIds = new Set((diff.removed || []).map((p) => p.id));
+  return [...out.filter((p) => !removedIds.has(p.id)), ...diff.added];
 }
 
 // ストック（月額）契約が指定月に有効か。
@@ -5521,14 +5526,14 @@ function PendingProjectCard({ p, onOpenDetail, onSetMonth, onEdit, onDelete, onP
   );
 }
 
-function PendingSummary({ list, children }) {
+function PendingSummary({ list, children, hideTotal }) {
   const total = list.reduce((a, p) => a + (Number(p.status === "won" ? p.confirmedAmount : p.estimatedAmount) || 0), 0);
   const missing = list.filter(missingFrame).length;
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className={`grid gap-3 ${hideTotal ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-3"}`}>
       <StatTile label="件数" value={list.length} unit="件" />
-      <StatTile label="金額の合計" value={Math.round(total / 10000).toLocaleString("ja-JP")} unit="万円" tone="text-slate-900" />
-      <StatTile label="金額未記入" value={missing} unit="件" tone={missing ? "text-rose-600" : "text-slate-400"} sub={missing ? "赤枠の案件" : "なし"} />
+      {hideTotal ? null : <StatTile label="金額の合計" value={Math.round(total / 10000).toLocaleString("ja-JP")} unit="万円" tone="text-slate-900" />}
+      {hideTotal ? null : <StatTile label="金額未記入" value={missing} unit="件" tone={missing ? "text-rose-600" : "text-slate-400"} sub={missing ? "赤枠の案件" : "なし"} />}
       {children}
     </div>
   );
@@ -5604,7 +5609,7 @@ function ReferenceEstimatesPage({ referenceProjects, onPromote, onEdit, onDelete
           </button>
         ))}
       </div>
-      <PendingSummary list={cur.list} />
+      <PendingSummary list={cur.list} hideTotal />
       {cur.list.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-400">該当する参考見積りはありません。</div>
       ) : tab === "dated" ? (
@@ -5647,28 +5652,35 @@ function SalesImportModal({ open, onClose, onImport, projects, assignees }) {
     setFiles([]);
     onClose();
   }
-  const { incoming, base, targets, actuals, prevYear } = useMemo(() => {
+  const { incoming, base, targets, actuals, prevYear, hasPlanFile } = useMemo(() => {
     const inc = [];
     const b = {};
     const t = {};
     const ac = {};
     const py = {};
+    let hasPlanFile = false;
     files.forEach(({ parsed }) => {
       if (!parsed) return;
       if (parsed.type === "monthly") ac[parsed.month] = parsed.amount;
       else if (parsed.type === "plan") {
-        [...parsed.confirmed, ...parsed.hot].forEach((x) => inc.push(salesItemToProject(x, "plan")));
+        hasPlanFile = true;
+        parsed.hot.forEach((x) => inc.push(salesItemToProject(x, "plan")));
         Object.assign(b, parsed.base);
         Object.assign(t, parsed.targets);
         Object.assign(py, parsed.prevYear || {});
       } else parsed.items.forEach((x) => inc.push(salesItemToProject(x, "attack")));
     });
-    return { incoming: inc, base: b, targets: t, actuals: ac, prevYear: py };
+    return { incoming: inc, base: b, targets: t, actuals: ac, prevYear: py, hasPlanFile };
   }, [files]);
-  const diff = useMemo(() => diffSalesProjects(projects, incoming), [projects, incoming]);
+  const diff = useMemo(() => {
+    const d = diffSalesProjects(projects, incoming);
+    // 売上計画の確定売上（受注・請求済）は読み込まなくなったため、以前に読み込んだ分は売上計画を取り込むときに削除する
+    d.removed = hasPlanFile ? projects.filter((p) => String(p.importKey || "").startsWith("plan|confirmed|")) : [];
+    return d;
+  }, [projects, incoming, hasPlanFile]);
   const newAssignees = Array.from(new Set(incoming.map((p) => p.assignee).filter((a) => a && !assignees.includes(a))));
   const hasPlan = Object.keys(targets).length + Object.keys(actuals).length + Object.keys(prevYear).length > 0;
-  const applyCount = diff.added.length + diff.changed.length;
+  const applyCount = diff.added.length + diff.changed.length + diff.removed.length;
   const Line = ({ label, value, tone = "text-slate-800" }) => (
     <div className="flex flex-col gap-0.5 py-1 text-xs sm:flex-row sm:items-center sm:justify-between sm:gap-3">
       <span className="shrink-0 text-slate-500">{label}</span>
@@ -5706,7 +5718,6 @@ function SalesImportModal({ open, onClose, onImport, projects, assignees }) {
             if (p.type === "plan") {
               const first = p.months[0];
               const last = p.months[p.months.length - 1];
-              const reflected = p.confirmed.filter((x) => !x.amount).length;
               const tVals = Array.from(new Set(Object.values(p.targets)));
               return (
                 <div key={f.name} className="rounded-xl border border-slate-200 p-3">
@@ -5716,8 +5727,7 @@ function SalesImportModal({ open, onClose, onImport, projects, assignees }) {
                   </div>
                   <Line label="月の目標金額" value={tVals.map((v) => formatManYen(v)).join("・") || "—"} />
                   <Line label="前年度売上（月別売上で前年と比較）" value={Object.keys(p.prevYear || {}).length ? `${Object.keys(p.prevYear).length}か月分` : "—"} />
-                  <Line label="確定売上 → 受注" value={`${p.confirmed.length}件（うち月間売上反映済 ${reflected}件）`} tone="text-emerald-600" />
-                  <Line label="見積提出 未決定売上 → HOT" value={`${p.hot.length}件・${formatManYen(p.hot.reduce((a, x) => a + (x.amount || 0), 0))}`} tone="text-rose-600" />
+                  <Line label="見積提出 未決定売上（34〜60行目）→ HOT" value={`${p.hot.length}件・${formatManYen(p.hot.reduce((a, x) => a + (x.amount || 0), 0))}`} tone="text-rose-600" />
                   <Line label="運用・管理（ストック売上のため読み込まない）" value={`${p.skippedStock}件`} tone="text-slate-400" />
                   <Line label="対象外の担当・担当が空欄（読み込まない）" value={`${p.skippedAssignee}件`} tone="text-slate-400" />
                 </div>
@@ -5729,13 +5739,13 @@ function SalesImportModal({ open, onClose, onImport, projects, assignees }) {
               <div key={f.name} className="rounded-xl border border-slate-200 p-3">
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <span className="truncate text-sm font-semibold text-slate-800">{f.name}</span>
-                  <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">アタックリスト → WARM</span>
+                  <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">アタックリスト → WARM（受注予定日・売上見込額が空欄はCOOL）</span>
                 </div>
                 <Line label="進行中（案件提案中）" value={`${cnt((x) => x.stage === "active")}件（うち受注月未定 ${cnt((x) => x.stage === "active" && !x.month)}件）`} tone="text-amber-600" />
                 <Line label="受注" value={`${cnt((x) => x.stage === "won")}件（うち受注月未定 ${cnt((x) => x.stage === "won" && !x.month)}件）`} tone="text-emerald-600" />
                 <Line label="ロスト" value={`${cnt((x) => x.stage === "lost")}件`} tone="text-rose-600" />
-                <Line label="参考見積 → 参考見積りページ（COOL）" value={`${cnt((x) => x.stage === "reference")}件（うち受注月未定 ${cnt((x) => x.stage === "reference" && !x.month)}件）`} tone="text-sky-600" />
-                <Line label="売上見込額が未記入（赤枠で表示）" value={`${cnt((x) => !x.amount)}件`} tone="text-rose-600" />
+                <Line label="参考見積 → 参考見積りページ（金額は入れない）" value={`${cnt((x) => x.stage === "reference")}件（うち受注月未定 ${cnt((x) => x.stage === "reference" && !x.month)}件）`} tone="text-sky-600" />
+                <Line label="受注予定日・売上見込額が空欄 → COOL" value={`${cnt((x) => x.stage !== "reference" && (!x.month || !x.amount))}件（うち売上見込額が未記入・赤枠 ${cnt((x) => x.stage !== "reference" && !x.amount)}件）`} tone="text-rose-600" />
                 <div className="mt-1 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-slate-500">
                   読み込まない行：移動済 {p.skipped.moved}件・更新日が{fyYear}年8月より前 {p.skipped.old}件・受注予定／更新日／金額がすべて空欄 {p.skipped.empty}件・対象外のステージ（飛び込みなど）{p.skipped.stage}件・対象外の担当 {p.skipped.assignee}件
                 </div>
@@ -5762,13 +5772,18 @@ function SalesImportModal({ open, onClose, onImport, projects, assignees }) {
               )}
             </div>
           )}
+          {diff.removed.length > 0 && (
+            <div className="rounded-lg border border-rose-100 bg-rose-50/60 p-2.5 text-xs text-rose-700">
+              以前に売上計画の確定売上（受注・請求済）から取り込んだ案件 {diff.removed.length}件を削除します。確定売上は月次シートの「現在 売上」で反映されます。
+            </div>
+          )}
           {newAssignees.length > 0 && (
             <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-2.5 text-xs text-indigo-700">
               ツールにいない担当者を自動で追加します：{newAssignees.join("、")}
             </div>
           )}
           <div className="text-[11px] leading-relaxed text-slate-400">
-            CSVにはセルの色が含まれないため、確定売上は金額があれば「受注」、金額が空欄なら「請求済（月間売上反映済）」として読み込みます。
+            売上計画は「◯月 見積提出 未決定売上」（34〜60行目）だけをHOTとして読み込みます。受注済み・請求済みの行と AF列は読み込みません。各月の確定売上は月次シート（例：10月）の「現在 売上」を使います。
           </div>
         </div>
       )}
@@ -6311,6 +6326,8 @@ function LoginPage() {
 const SHOW_THEME_SWITCHER = false;
 // 案件をクリックしたときに詳細パネルを開くか（戻すときは true に）
 const SHOW_PROJECT_DETAIL = false;
+// ヘッダーの「案件を追加」「参考見積り追加」「シート連携」・設定アイコン・「営」（戻すときは true）
+const SHOW_HEADER_EXTRAS = false;
 
 export default function App() {
   // ログイン状態（Firebase Authentication）とメンバー登録の確認
@@ -6775,7 +6792,8 @@ export default function App() {
     if (Object.keys(actuals).length) setActualRevenue((a) => ({ ...a, ...actuals }));
     if (Object.keys(prevYear).length) setPrevRevenue((a) => ({ ...a, ...prevYear }));
     const monthsNote = Object.keys(actuals).length ? `・月次売上${Object.keys(actuals).length}か月分` : "";
-    pushToast(`CSVを反映しました（新規${diff.added.length}件・変更${diff.changed.length}件${monthsNote}／変更なし${diff.unchanged.length}件は読み込みませんでした）`);
+    const removedNote = diff.removed && diff.removed.length ? `・確定売上の取り込み分${diff.removed.length}件を削除` : "";
+    pushToast(`CSVを反映しました（新規${diff.added.length}件・変更${diff.changed.length}件${removedNote}${monthsNote}／変更なし${diff.unchanged.length}件は読み込みませんでした）`);
     setShowSalesImport(false);
   }
 
@@ -7029,38 +7047,44 @@ export default function App() {
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={() => setShowAdd(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 sm:px-3.5"
-            >
-              <Plus size={16} />
-              <span className="hidden sm:inline">案件を追加</span>
-            </button>
-            <button
-              onClick={() => setShowAddReference(true)}
-              className="hidden items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3.5 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 sm:flex"
-            >
-              <FileText size={16} />
-              参考見積り追加
-            </button>
+            {SHOW_HEADER_EXTRAS && (
+              <button
+                onClick={() => setShowAdd(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 sm:px-3.5"
+              >
+                <Plus size={16} />
+                <span className="hidden sm:inline">案件を追加</span>
+              </button>
+            )}
+            {SHOW_HEADER_EXTRAS && (
+              <button
+                onClick={() => setShowAddReference(true)}
+                className="hidden items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3.5 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 sm:flex"
+              >
+                <FileText size={16} />
+                参考見積り追加
+              </button>
+            )}
             <button
               onClick={() => setShowSalesImport(true)}
-              className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 sm:flex"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 sm:px-3.5"
             >
               <Upload size={16} />
               CSV取り込み
             </button>
-            <button
-              onClick={() => setShowSheetSync(true)}
-              className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 sm:flex"
-            >
-              <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
-              シート連携{sheetSources.length > 0 ? `（${sheetSources.length}）` : ""}
-            </button>
-            <HeaderMoreMenu onAddReference={() => setShowAddReference(true)} onImport={() => setShowSalesImport(true)} onSheetSync={() => setShowSheetSync(true)} />
+            {SHOW_HEADER_EXTRAS && (
+              <button
+                onClick={() => setShowSheetSync(true)}
+                className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 sm:flex"
+              >
+                <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
+                シート連携{sheetSources.length > 0 ? `（${sheetSources.length}）` : ""}
+              </button>
+            )}
+            {SHOW_HEADER_EXTRAS && <HeaderMoreMenu onAddReference={() => setShowAddReference(true)} onImport={() => setShowSalesImport(true)} onSheetSync={() => setShowSheetSync(true)} />}
             <button className="hidden rounded-lg p-2 text-slate-400 hover:bg-slate-100 sm:inline-flex"><Bell size={18} /></button>
-            <button className="hidden rounded-lg p-2 text-slate-400 hover:bg-slate-100 sm:inline-flex"><Settings size={18} /></button>
-            <div className="hidden h-8 w-8 rounded-full bg-indigo-100 text-center text-sm font-medium leading-8 text-indigo-700 sm:block">営</div>
+            {SHOW_HEADER_EXTRAS && <button className="hidden rounded-lg p-2 text-slate-400 hover:bg-slate-100 sm:inline-flex"><Settings size={18} /></button>}
+            {SHOW_HEADER_EXTRAS && <div className="hidden h-8 w-8 rounded-full bg-indigo-100 text-center text-sm font-medium leading-8 text-indigo-700 sm:block">営</div>}
           </div>
         </header>
 
