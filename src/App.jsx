@@ -9,7 +9,7 @@ import {
   Trash2, Pencil, CheckCircle2, XCircle, Clock3, ArrowRight,
   TrendingUp, TrendingDown, Building2, Truck, Menu, MapPin, FileCheck,
   ArrowUpDown, Target, Link2, FileText, Upload, AlertTriangle, RefreshCw, Repeat, BarChart4,
-  Eye, EyeOff, LogOut, Lock, History, Undo2, ExternalLink, Trophy, Sparkles,
+  Eye, EyeOff, LogOut, Lock, History, Undo2, ExternalLink, Trophy, Sparkles, Rocket, Flag, Layers,
 } from "lucide-react";
 import { parseSalesFile, ALLOWED_ASSIGNEES, fiscalStartFromName } from "./planImport";
 import { useAuthState, useFirestoreList, useSettings, login, logout } from "./firestoreService";
@@ -2956,94 +2956,111 @@ function YearlyCompositionSection({ projects, stocks = [], targetFor, baseMonthl
         </div>
 
         {/* 構成図：目標を100%とした大きなブロック図 */}
+        <style>{`
+          @keyframes compIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+          @keyframes stripeMove { from { background-position: 0 0; } to { background-position: 46px 0; } }
+          @keyframes floatY { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+          @keyframes pinPulse { 0% { box-shadow: 0 0 0 0 rgba(124,58,237,.45); } 100% { box-shadow: 0 0 0 10px rgba(124,58,237,0); } }
+          .comp-in { animation: compIn .6s cubic-bezier(.2,.8,.2,1) both; }
+          .comp-tile { transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s, filter .25s; }
+          .comp-tile:hover { transform: translateY(-3px); box-shadow: 0 12px 28px -12px rgba(15,23,42,.35); filter: saturate(1.08); }
+          .comp-mission { animation: stripeMove 2.4s linear infinite; }
+          .comp-float { animation: floatY 3.2s ease-in-out infinite; }
+          .comp-pin { animation: pinPulse 1.8s ease-out infinite; }
+          @media (prefers-reduced-motion: reduce) { .comp-in, .comp-mission, .comp-float, .comp-pin { animation: none; } }
+        `}</style>
         <div>
-          <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
-            <span className="font-semibold text-slate-700">構成図</span>
-            <span>面積が目標に占める割合です</span>
+          <div className="mb-3 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-sm font-bold tracking-tight text-slate-800"><Layers size={15} className="text-indigo-500" />構成図</span>
+            <span className="text-[11px] text-slate-400">面積が目標に占める割合です</span>
           </div>
-          <div className="flex h-[360px] gap-2 max-md:h-auto max-md:flex-col">
+          <div className="flex h-[380px] gap-2.5 max-md:h-auto max-md:flex-col">
             {/* 基礎数字 */}
-            <div className="relative flex min-w-[130px] flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-slate-200 to-slate-300 p-4 max-md:min-h-[110px]" style={{ flexGrow: Math.max(baseTotal, 1), flexBasis: 0 }}>
-              <div className="text-xs font-semibold text-slate-700">制作基礎数字</div>
-              <div>
-                <div className="tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 700, fontSize: 24 }}>{man(baseTotal)}<span className="ml-0.5 text-xs">万円</span></div>
-                <div className="text-xs font-semibold text-slate-600">{pct(baseTotal)}%</div>
+            <div
+              className="comp-in comp-tile relative flex min-w-[130px] flex-col justify-between overflow-hidden rounded-[22px] p-4 max-md:min-h-[120px]"
+              style={{ flexGrow: Math.max(baseTotal, 1), flexBasis: 0, background: "linear-gradient(160deg,#f1f5f9 0%,#cbd5e1 100%)", animationDelay: "0ms" }}
+            >
+              <div className="pointer-events-none absolute -bottom-10 -right-10 h-40 w-40 rounded-full bg-white/40" />
+              <div className="pointer-events-none absolute -bottom-16 right-8 h-28 w-28 rounded-full bg-white/30" />
+              <div className="relative flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/80 text-slate-600 shadow-sm"><Building2 size={16} /></span>
+                <span className="text-xs font-bold text-slate-700">制作基礎数字</span>
+              </div>
+              <div className="relative">
+                <div className="text-[11px] font-medium text-slate-500">毎月コツコツ</div>
+                <div className="tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 800, fontSize: 28, lineHeight: 1.1 }}>{man(baseTotal)}<span className="ml-0.5 text-xs font-semibold">万円</span></div>
+                <span className="mt-1 inline-block rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-700">{pct(baseTotal)}%</span>
               </div>
             </div>
             {/* ストック（区分ごとに縦に分割） */}
-            <div className="flex min-w-[170px] flex-col gap-1.5" style={{ flexGrow: Math.max(stockTotal, 1), flexBasis: 0 }}>
-              {groups.map(({ g, v }) => (
+            <div className="flex min-w-[250px] flex-col gap-1.5" style={{ flexGrow: Math.max(stockTotal, 1), flexBasis: 0 }}>
+              {groups.map(({ g, v }, gi) => (
                 <div
                   key={g}
-                  className="flex min-h-[44px] items-center justify-between gap-2 overflow-hidden rounded-xl px-3 text-white"
-                  style={{ flexGrow: Math.max(v, stockTotal * 0.04, 1), flexBasis: 0, background: `linear-gradient(135deg, ${COMPOSITION_COLORS[g]}, ${COMPOSITION_COLORS[g]}cc)`, opacity: v > 0 ? 1 : 0.35 }}
+                  className="comp-in comp-tile relative flex min-h-[46px] items-center justify-between gap-2 overflow-hidden rounded-2xl px-3 text-white"
+                  style={{ flexGrow: Math.max(v, stockTotal * 0.05, 1), flexBasis: 0, background: `linear-gradient(120deg, ${COMPOSITION_COLORS[g]}, ${COMPOSITION_COLORS[g]}b3)`, opacity: v > 0 ? 1 : 0.35, animationDelay: `${80 + gi * 70}ms` }}
+                  title={`${g} 年間${man(v)}万円（目標の${pct(v)}%）`}
                 >
-                  <span className="truncate text-[12px] font-semibold">{g}</span>
-                  <span className="shrink-0 text-right tabular-nums" style={NUM}>
-                    <span className="text-[13px] font-bold">{man(v)}</span><span className="text-[10px]">万</span>
-                    <span className="ml-1.5 text-[10px] opacity-80">{pct(v)}%</span>
+                  <span className="pointer-events-none absolute -right-4 -top-6 h-16 w-16 rounded-full bg-white/15" />
+                  <span className="relative flex min-w-0 items-center gap-1.5">
+                    {g === AI_BUDDY ? <Sparkles size={13} className="shrink-0" /> : <Repeat size={12} className="shrink-0 opacity-80" />}
+                    <span className="truncate text-[12px] font-bold">{g}</span>
+                  </span>
+                  <span className="relative shrink-0 text-right tabular-nums" style={NUM}>
+                    <span className="text-[14px] font-extrabold">{man(v)}</span><span className="text-[10px]">万</span>
+                    <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-px text-[10px] font-semibold">{pct(v)}%</span>
                   </span>
                 </div>
               ))}
             </div>
-            {/* 営業（必要額の中に確定分） */}
-            <div className="relative flex min-w-[200px] flex-col overflow-hidden rounded-2xl border-2 border-dashed border-indigo-200 max-md:min-h-[240px]" style={{ flexGrow: Math.max(need, 1), flexBasis: 0 }}>
-              <div className="relative flex flex-1 flex-col justify-between p-4 max-md:min-h-[140px]" style={{ flexGrow: Math.max(left, 1), ...stripe("#6366f1") }}>
-                <div>
-                  <div className="text-xs font-semibold text-indigo-700">営業で必要な売上</div>
-                  <div className="tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 700, fontSize: 28, lineHeight: 1.15 }}>{man(need)}<span className="ml-0.5 text-xs">万円</span></div>
-                  <div className="text-xs font-semibold text-indigo-600">目標の{pct(need)}%</div>
-                </div>
-                <div className="self-start rounded-xl bg-white/85 px-3 py-2 shadow-sm backdrop-blur">
-                  <div className="text-[11px] text-slate-500">あと</div>
-                  <div className={`tabular-nums ${left > 0 ? "text-rose-600" : "text-emerald-600"}`} style={{ ...NUM, fontWeight: 700, fontSize: 20 }}>{left > 0 ? `${man(left)}万円` : "達成"}</div>
-                </div>
+            {/* 営業（ミッション） */}
+            <div
+              className="comp-in comp-tile comp-mission relative flex min-w-[220px] flex-col justify-between overflow-hidden rounded-[22px] border-2 border-indigo-300/70 p-5 max-md:min-h-[230px]"
+              style={{ flexGrow: Math.max(need, 1), flexBasis: 0, backgroundColor: "#f5f6ff", backgroundImage: "linear-gradient(135deg, rgba(99,102,241,.12) 25%, transparent 25%, transparent 50%, rgba(99,102,241,.12) 50%, rgba(99,102,241,.12) 75%, transparent 75%, transparent)", backgroundSize: "46px 46px", animationDelay: "480ms" }}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="rounded-full bg-indigo-600 px-2.5 py-1 text-[10px] font-bold tracking-[.16em] text-white shadow-sm">MISSION</span>
+                <span className="comp-float flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-indigo-600 shadow-md"><Rocket size={22} /></span>
               </div>
-              <div className="flex min-h-[48px] items-center justify-between bg-slate-900 px-4 text-white" style={{ flexGrow: Math.max(done, need * 0.001), flexBasis: 0 }}>
-                <span className="text-xs font-semibold">確定済み</span>
-                <span className="tabular-nums" style={NUM}><span className="text-base font-bold">{man(done)}</span><span className="text-[10px]">万円</span><span className="ml-1.5 text-[10px] text-white/70">{Math.round(doneRate)}%</span></span>
+              <div>
+                <div className="text-xs font-bold text-indigo-700">営業で売り上げる分</div>
+                <div className="tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 800, fontSize: 38, lineHeight: 1.05 }}>{man(need)}<span className="ml-1 text-sm font-semibold text-slate-500">万円</span></div>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 shadow-sm">目標の{pct(need)}%</span>
+                  <span className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-600">月あたり {man(need / 12)}万円</span>
+                </div>
               </div>
             </div>
           </div>
-          {/* 目盛り（目標に占める割合） */}
-          <div className="mt-2 flex h-2 overflow-hidden rounded-full max-md:hidden">
-            <div style={{ flexGrow: Math.max(baseTotal, 1), background: COMPOSITION_COLORS[BASE_LABEL] }} />
-            {groups.map(({ g, v }) => <div key={g} style={{ flexGrow: v, background: COMPOSITION_COLORS[g] }} />)}
-            <div style={{ flexGrow: done, background: "#0f172a" }} />
-            <div style={{ flexGrow: left, ...stripe("#6366f1"), backgroundColor: "#eef2ff" }} />
-          </div>
-          <div className="mt-1 flex justify-between text-[10px] text-slate-400 max-md:hidden">
-            <span>0</span>
-            <span>基礎数字＋ストック {pct(fixed)}%</span>
-            <span>目標 {man(target)}万円</span>
+          {/* 目盛り：スタートからゴール（目標）まで */}
+          <div className="relative mt-9 max-md:hidden">
+            <div className="flex h-3 overflow-hidden rounded-full ring-1 ring-inset ring-slate-200">
+              <div style={{ flexGrow: Math.max(baseTotal, 1), background: COMPOSITION_COLORS[BASE_LABEL] }} />
+              {groups.map(({ g, v }) => <div key={g} style={{ flexGrow: v, background: COMPOSITION_COLORS[g] }} />)}
+              <div className="comp-mission" style={{ flexGrow: need, backgroundColor: "#eef2ff", backgroundImage: "linear-gradient(135deg, rgba(99,102,241,.35) 25%, transparent 25%, transparent 50%, rgba(99,102,241,.35) 50%, rgba(99,102,241,.35) 75%, transparent 75%, transparent)", backgroundSize: "23px 23px" }} />
+            </div>
+            {/* 基礎数字＋ストックで決まっている地点のピン */}
+            <div className="absolute -top-1.5" style={{ left: `${Math.min(100, pct(fixed))}%` }}>
+              <div className="comp-pin h-6 w-6 -translate-x-1/2 rounded-full border-[3px] border-white bg-violet-600 shadow" />
+              <div className="mt-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white">ここまで決まっている {pct(fixed)}%</div>
+            </div>
+            {/* ゴールの旗 */}
+            <div className="absolute -top-7 right-0">
+              <span className="flex items-center gap-1 rounded-md bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm"><Flag size={11} />GOAL {man(target)}万円</span>
+            </div>
+            <div className="mt-9 flex justify-between text-[10px] text-slate-400">
+              <span>START</span>
+              <span>ピンから先が営業のミッション</span>
+            </div>
           </div>
         </div>
 
-        {/* 営業の進み具合 */}
-        <div className="grid gap-3 md:grid-cols-[auto_1fr_1fr]">
-          <div className="flex items-center gap-4 rounded-2xl bg-slate-50 px-5 py-4">
-            <svg width="128" height="128" viewBox="0 0 128 128" className="shrink-0">
-              <circle cx="64" cy="64" r={R} fill="none" stroke="#e2e8f0" strokeWidth="12" />
-              {doneRate > 0.5 && <circle cx="64" cy="64" r={R} fill="none" stroke="url(#salesRing)" strokeWidth="12" strokeLinecap="round" strokeDasharray={`${(doneRate / 100) * C} ${C}`} transform="rotate(-90 64 64)" />}
-              <defs>
-                <linearGradient id="salesRing" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#6366f1" />
-                  <stop offset="100%" stopColor="#0f172a" />
-                </linearGradient>
-              </defs>
-              <text x="64" y="64" textAnchor="middle" style={{ ...NUM, fontSize: 26, fontWeight: 700, fill: "#0f172a" }}>{Math.round(doneRate)}%</text>
-              <text x="64" y="82" textAnchor="middle" style={{ fontSize: 10, fill: "#64748b" }}>営業の達成率</text>
-            </svg>
-            <div className="text-xs leading-relaxed text-slate-600">
-              営業で必要な<br />
-              <b className="tabular-nums text-slate-900" style={NUM}>{man(need)}万円</b> のうち<br />
-              <b className="tabular-nums text-slate-900" style={NUM}>{man(done)}万円</b> が確定
-            </div>
-          </div>
+        {/* 営業で必要な売上のペースと、決まっている割合 */}
+        <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-2xl bg-slate-50 px-5 py-4">
-            <div className="text-xs text-slate-500">あと営業で売り上げる金額</div>
-            <div className={`mt-1 tabular-nums ${left > 0 ? "text-rose-600" : "text-emerald-600"}`} style={{ ...NUM, fontWeight: 700, fontSize: 30, lineHeight: 1.1 }}>{left > 0 ? man(left) : "達成"}{left > 0 && <span className="ml-1 text-sm">万円</span>}</div>
-            <div className="mt-2 text-xs text-slate-500">{monthsLeft ? <>残り<b className="text-slate-800">{monthsLeft}か月</b>・1か月あたり <b className="tabular-nums text-slate-800" style={NUM}>{man(pace)}万円</b></> : "この期は終了しています"}</div>
+            <div className="text-xs text-slate-500">営業で必要な売上（1か月あたり）</div>
+            <div className="mt-1 tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 700, fontSize: 30, lineHeight: 1.1 }}>{man(need / 12)}<span className="ml-1 text-sm">万円</span></div>
+            <div className="mt-2 text-xs text-slate-500">年間 {man(need)}万円 ÷ 12か月</div>
           </div>
           <div className="rounded-2xl bg-slate-50 px-5 py-4">
             <div className="text-xs text-slate-500">基礎数字＋ストックで決まっている割合</div>
@@ -3057,11 +3074,10 @@ function YearlyCompositionSection({ projects, stocks = [], targetFor, baseMonthl
         <div>
           <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
             <span className="font-semibold text-slate-700">月ごとに営業で必要な売上</span>
-            <span>目標 − 基礎数字 − ストック ／ 黒は確定済み</span>
+            <span>目標 − 基礎数字 − ストック</span>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-12">
             {monthRows.map((r) => {
-              const rate = r.needM > 0 ? Math.min(100, (r.doneM / r.needM) * 100) : r.doneM > 0 ? 100 : 0;
               return (
                 <div key={r.m} className={`flex flex-col rounded-xl border p-2.5 ${r.isNow ? "border-indigo-300 bg-indigo-50/60 ring-2 ring-indigo-100" : "border-slate-200 bg-white"} ${r.isPast ? "opacity-80" : ""}`}>
                   <div className="flex items-center justify-between">
@@ -3069,8 +3085,6 @@ function YearlyCompositionSection({ projects, stocks = [], targetFor, baseMonthl
                     {r.isNow && <span className="rounded-full bg-indigo-600 px-1.5 text-[9px] font-semibold text-white">今月</span>}
                   </div>
                   <div className="mt-1 tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 700, fontSize: 15 }}>{man(r.needM)}<span className="text-[9px] text-slate-500">万</span></div>
-                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-slate-900" style={{ width: `${rate}%` }} /></div>
-                  <div className="mt-1 text-[10px] tabular-nums text-slate-500">確定 {man(r.doneM)}万</div>
                 </div>
               );
             })}
