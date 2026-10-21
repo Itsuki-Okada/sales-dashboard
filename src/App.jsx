@@ -2404,7 +2404,7 @@ function AnalysisPage({ projects }) {
   const maxCatAmount = Math.max(1, ...byCategory.map((r) => r.estimatedTotal + r.confirmedTotal));
   const maxWhoAmount = Math.max(1, ...byAssignee.map((r) => r.confirmedTotal));
 
-  const months = recentMonthKeys(6);
+  const months = fiscalPeriods(fiscalStart(currentMonthKey())).map((p) => p.key);
   const monthlyRate = months.map((m) => {
     const c = computeCounts(filtered.filter((p) => p.scheduledMonth === m));
     return { month: `${parseInt(m.slice(5), 10)}月`, 受注率: c.rate ?? 0, 受注: c.won, ロスト: c.lost };
@@ -2508,7 +2508,7 @@ function AnalysisPage({ projects }) {
             </BarChart>
           </ResponsiveContainer>
         </SectionCard>
-        <SectionCard title="月別の受注率（直近6か月）">
+        <SectionCard title="月別の受注率（今期 8月〜7月）">
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={monthlyRate}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" strokeOpacity={0.6} />
@@ -2778,7 +2778,7 @@ function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [
 
 // 年別売上：月ごとの確定金額（月次シートの売上 → 前年度売上 → 受注・納品済みの案件 の順で採用）を期または暦年で合計
 function YearlyRevenuePage({ projects, actualOf = () => null, prevOf = () => null, extraMonths = [] }) {
-  const [mode, setMode] = useState("fiscal"); // fiscal：期（8月〜翌7月） / calendar：暦年
+  const mode = "fiscal"; // 期（8月〜翌7月）で集計
   const isConfirmed = (p) => p.status === "won" || p.status === "delivered";
   const confirmedOf = (list) => list.filter(isConfirmed).reduce((a, p) => a + (Number(p.confirmedAmount) || 0), 0);
   const monthTotal = (m) => {
@@ -2808,19 +2808,6 @@ function YearlyRevenuePage({ projects, actualOf = () => null, prevOf = () => nul
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-2 pl-4 shadow-sm">
-        <div className="text-sm text-slate-600">集計の単位</div>
-        <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
-          {[
-            ["fiscal", "期ごと（8月〜翌7月）"],
-            ["calendar", "暦年（1月〜12月）"],
-          ].map(([k, l]) => (
-            <button key={k} onClick={() => setMode(k)} className={`rounded-lg px-3 py-1.5 text-xs font-medium ${mode === k ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}>
-              {l}
-            </button>
-          ))}
-        </div>
-      </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {[...rows].reverse().map((r) => {
@@ -3525,6 +3512,9 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
       return el;
     });
 
+  // 月の選択と推移は、選んでいる月を含む期（8月〜翌年7月）の12か月
+  const fyStart = fiscalStart(month);
+  const fyMonths = fiscalPeriods(fyStart).map((p) => p.key);
   const idx = monthChoices.indexOf(month);
   const tiles = [
     ["HOT", hot, "#e11d48", "bg-rose-50 text-rose-600"],
@@ -3534,8 +3524,8 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
 
   ];
 
-  // 直近6か月の確定金額（ミニ推移）
-  const trendMonths = Array.from({ length: 6 }, (_, i) => addMonths(month, i - 5));
+  // 期の12か月の確定金額（ミニ推移）
+  const trendMonths = fyMonths;
   const trend = trendMonths.map((m) => ({ m, v: computedConfirmed(m, computeCounts(projects.filter((p) => p.scheduledMonth === m)).confirmedTotal) }));
   const trendMax = Math.max(target, ...trend.map((t) => t.v), 1);
   const forecast = confirmed + hot + warm + cool + stockEst;
@@ -3588,13 +3578,14 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
           </div>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {monthChoices.map((m) => (
+          <span className="self-center pr-1 text-xs font-semibold text-slate-500">{fiscalNo(fyStart)}期</span>
+          {fyMonths.map((m) => (
             <button
               key={m}
               onClick={() => onChangeMonth(m)}
               className={`rounded-full px-3 py-1 text-xs font-medium ${m === month ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
             >
-              {monthLabel(m)}
+              {Number(m.slice(5))}月
             </button>
           ))}
         </div>
@@ -3669,13 +3660,13 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
         </div>
       </div>
 
-      {/* 下段：直近6か月の確定金額 */}
+      {/* 下段：期（8月〜翌年7月）の確定金額 */}
       <div className="border-t border-slate-100 px-5 py-4 sm:px-6">
         <div className="mb-2 flex items-baseline justify-between">
-          <span className="text-xs font-medium text-slate-500">直近6か月の確定金額</span>
+          <span className="text-xs font-medium text-slate-500">{fiscalNo(fyStart)}期の確定金額（8月〜7月）</span>
           <span className="text-[11px] text-slate-400">点線は月間目標</span>
         </div>
-        <div className="relative flex h-16 items-end gap-2">
+        <div className="relative flex h-16 items-end gap-1 sm:gap-2">
           {target > 0 && (
             <div className="absolute inset-x-0 border-t border-dashed border-slate-300" style={{ bottom: `${(target / trendMax) * 100}%` }} />
           )}
@@ -3699,7 +3690,7 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
             );
           })}
         </div>
-        <div className="mt-1 flex gap-2">
+        <div className="mt-1 flex gap-1 sm:gap-2">
           {trend.map((t) => (
             <span key={t.m} className={`flex-1 text-center text-[11px] ${t.m === month ? "font-semibold text-slate-800" : "text-slate-400"}`}>
               {Number(t.m.slice(5))}月
@@ -3887,8 +3878,12 @@ function MonthlyPage({ projects, stocks = [], onOpenDetail, monthlyTarget = 0, t
   const perFor = (m) => Math.round(tFor(m) / Math.max(1, assignees.length));
   const isAll = scope === "all" || !assignees.includes(scope);
   const tabs = [{ key: "all", label: "全体" }, ...assignees.map((a) => ({ key: a, label: a }))];
+  const [fy, setFy] = useState(() => fiscalStart(currentMonthKey()));
   return (
     <div className="flex flex-col gap-4">
+      <div>
+        <FiscalYearPicker value={fy} onChange={setFy} />
+      </div>
       <div className="flex flex-wrap gap-1.5 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
         {tabs.map((t) => {
           const active = isAll ? t.key === "all" : t.key === scope;
@@ -3911,10 +3906,11 @@ function MonthlyPage({ projects, stocks = [], onOpenDetail, monthlyTarget = 0, t
         </span>
       </div>
       {isAll ? (
-        <MonthlyTable key="all" projects={projects} stocks={stocks} onOpenDetail={onOpenDetail} targetFor={tFor} baseOf={baseOf} refs={refs} actualOf={actualOf} />
+        <MonthlyTable key="all" fy={fy} projects={projects} stocks={stocks} onOpenDetail={onOpenDetail} targetFor={tFor} baseOf={baseOf} refs={refs} actualOf={actualOf} />
       ) : (
         <MonthlyTable
           key={scope}
+          fy={fy}
           projects={projects.filter((p) => p.assignee === scope)}
           stocks={stocks.filter((st) => st.assignee === scope)}
           onOpenDetail={onOpenDetail}
@@ -3926,14 +3922,12 @@ function MonthlyPage({ projects, stocks = [], onOpenDetail, monthlyTarget = 0, t
   );
 }
 
-function MonthlyTable({ projects, stocks = [], onOpenDetail, target = 0, targetFor, baseOf = () => 0, refs = [], actualOf = () => null }) {
+function MonthlyTable({ projects, stocks = [], onOpenDetail, target = 0, targetFor, baseOf = () => 0, refs = [], actualOf = () => null, fy }) {
   const tFor = targetFor || (() => target);
   const [openMonth, setOpenMonth] = useState(null);
   const isDesktop = useIsDesktop();
-  const presentMonths = projects.map((p) => p.scheduledMonth);
-  // 今期（8月〜翌年7月）の12か月は常に表示（例：2026年8月〜2027年7月）
-  const fiscalMonths = fiscalPeriods(fiscalStart(currentMonthKey())).map((p) => p.key);
-  const months = Array.from(new Set([...monthKeysRange(-1, 0), ...fiscalMonths, ...presentMonths])).sort();
+  // 選んだ期（8月〜翌年7月）の12か月だけを表示（例：19期 = 2026年8月〜2027年7月）
+  const months = fiscalPeriods(fy || fiscalStart(currentMonthKey())).map((p) => p.key);
   const thisMonth = currentMonthKey();
   const rows = months.map((m) => {
     const list = projects.filter((p) => p.scheduledMonth === m);
@@ -4644,6 +4638,27 @@ function fiscalLabel(startKey) {
   const y = Number(startKey.slice(0, 4));
   return `${y}年8月〜${y + 1}年7月`;
 }
+// 期の番号（19期 = 2026年8月〜2027年7月）
+const fiscalNo = (startKey) => Number(startKey.slice(0, 4)) - 2007;
+// 期（8月〜翌年7月）の切り替え
+function FiscalYearPicker({ value, onChange }) {
+  const isNow = value === fiscalStart(currentMonthKey());
+  return (
+    <div className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+      <button onClick={() => onChange(addMonths(value, -12))} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="前の期">
+        <ChevronLeft size={16} />
+      </button>
+      <div className="px-2 text-center">
+        <span className="text-sm font-semibold text-slate-800">{fiscalNo(value)}期</span>
+        <span className="ml-1.5 text-xs text-slate-500">{fiscalLabel(value)}</span>
+        {isNow && <span className="ml-1.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-medium text-white">今期</span>}
+      </div>
+      <button onClick={() => onChange(addMonths(value, 12))} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="次の期">
+        <ChevronRight size={16} />
+      </button>
+    </div>
+  );
+}
 // 期の12か月分の期間（8月〜翌年7月）
 function fiscalPeriods(startKey) {
   const now = currentMonthKey();
@@ -4682,10 +4697,9 @@ function StockTrendChart({ stocks }) {
         return [
           { key: "this", label: `今期（${Number(cur.slice(0, 4))}年8月〜）`, periods: fiscalPeriods(cur) },
           { key: "prev", label: "前期", periods: fiscalPeriods(prev) },
-          { key: "6", label: "直近6か月", periods: monthPeriods(-2, 3) },
         ];
       })()}
-      defaultRangeKey={(narrow) => (narrow ? "6" : "this")}
+      defaultRangeKey={() => "this"}
       valueOf={valueOf}
       summary={({ sumFor, periods, current }) => {
         const prev = addMonths(current.key, -1);
