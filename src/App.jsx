@@ -9,7 +9,7 @@ import {
   Trash2, Pencil, CheckCircle2, XCircle, Clock3, ArrowRight,
   TrendingUp, TrendingDown, Building2, Truck, Menu, MapPin, FileCheck,
   ArrowUpDown, Target, Link2, FileText, Upload, AlertTriangle, RefreshCw, Repeat, BarChart4,
-  Eye, EyeOff, LogOut, Lock, History, Undo2,
+  Eye, EyeOff, LogOut, Lock, History, Undo2, ExternalLink, Trophy, Sparkles,
 } from "lucide-react";
 import { parseSalesFile, ALLOWED_ASSIGNEES, fiscalStartFromName } from "./planImport";
 import { useAuthState, useFirestoreList, useSettings, login, logout } from "./firestoreService";
@@ -566,7 +566,12 @@ const STOCK_COLORS = {
   WEB広告運用: "#2BA0D6",
   AI運用: "#5B54D6",
   AIO運用: "#C25BC7",
+  "AI BUDDY": "#5B54D6",
 };
+// 画面での表示区分。AI運用・AIO運用はまとめて「AI BUDDY」と表記する（データの区分はそのまま）
+const AI_BUDDY = "AI BUDDY";
+const STOCK_GROUPS = ["ドメイン・サーバー", "保守管理", "SNS運用", "WEB広告運用", AI_BUDDY];
+const stockGroupOf = (category) => (category === "AI運用" || category === "AIO運用" ? AI_BUDDY : category);
 
 /* ------------------------------------------------------------------ */
 /* 運用売上CSVの読み込み                                                  */
@@ -3463,6 +3468,96 @@ function CompanyListPage({ projects, onOpenDetail, visits, onAddVisit, stocks = 
 /* ダッシュボード：月ごとの状況（今月フォーカス）                      */
 /* ------------------------------------------------------------------ */
 
+// 左メニュー下のAI BUDDYへのリンク（別タブで開く）
+const AI_BUDDY_URL = "https://aibuddy-phi.vercel.app";
+function AiBuddyLink() {
+  return (
+    <a
+      href={AI_BUDDY_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 hover:border-slate-300 hover:bg-slate-50"
+      title="AI BUDDYを開く"
+    >
+      <img src={`${import.meta.env.BASE_URL}aibuddy-logo.svg`} alt="AI BUDDY" className="h-3.5 w-auto" />
+      <ExternalLink size={13} className="ml-auto text-slate-400" />
+    </a>
+  );
+}
+
+// 目標達成シミュレーター：HOT・WARMなどが受注（確定）したら何％になるかを試せる
+function GoalSimulator({ confirmed, target, items }) {
+  const [on, setOn] = useState({});
+  const list = items.filter(([, v]) => v > 0);
+  const added = list.reduce((a, [k, v]) => a + (on[k] ? v : 0), 0);
+  const nowPct = Math.round((confirmed / target) * 100);
+  const simPct = Math.round(((confirmed + added) / target) * 100);
+  const gain = simPct - nowPct;
+  const reached = confirmed + added >= target;
+  const anyOn = list.some(([k]) => on[k]);
+  const level = reached ? "目標達成！" : simPct >= 80 ? "目標まであと少し！" : simPct >= 50 ? "折り返し地点を通過" : "まだまだこれから";
+  const barMax = Math.max(100, simPct);
+  if (!list.length) return null;
+  return (
+    <div className={`rounded-2xl border p-3.5 transition-colors ${reached && anyOn ? "border-emerald-200 bg-emerald-50/60" : "border-slate-200 bg-slate-50/60"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+          <Sparkles size={14} className="text-indigo-500" />
+          受注シミュレーション
+          <span className="font-normal text-slate-400">タップで「受注した」ことにする</span>
+        </div>
+        {anyOn && (
+          <button onClick={() => setOn({})} className="text-[11px] font-medium text-slate-400 hover:text-slate-600">リセット</button>
+        )}
+      </div>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {list.map(([k, v, color]) => {
+          const active = !!on[k];
+          return (
+            <button
+              key={k}
+              onClick={() => setOn((o) => ({ ...o, [k]: !o[k] }))}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 ${active ? "text-white shadow-sm" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+              style={active ? { background: color, borderColor: color } : { borderColor: "#e2e8f0" }}
+              aria-pressed={active}
+            >
+              {active ? <CheckCircle2 size={13} /> : <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />}
+              {k}が受注
+              <span className={`tabular-nums ${active ? "text-white/85" : "text-slate-400"}`}>+{Math.round(v / 10000).toLocaleString("ja-JP")}万</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex items-end justify-between gap-3">
+        <div>
+          <div className="text-[11px] text-slate-500">{anyOn ? "受注した場合の達成率" : "今の達成率"}</div>
+          <div className="flex items-baseline gap-2">
+            <span className={`tabular-nums transition-colors ${reached && anyOn ? "text-emerald-600" : "text-slate-900"}`} style={{ fontFamily: "var(--font-num)", fontWeight: 600, fontSize: 30, lineHeight: 1.1 }}>
+              {anyOn ? simPct : nowPct}
+              <span className="text-base">%</span>
+            </span>
+            {anyOn && gain > 0 && <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white">+{gain}pt</span>}
+          </div>
+        </div>
+        {anyOn && (
+          <div className={`flex items-center gap-1 text-right text-xs font-semibold ${reached ? "text-emerald-600" : "text-indigo-700"}`}>
+            {reached && <Trophy size={16} />}
+            {reached ? `${level}（+${Math.round((confirmed + added - target) / 10000).toLocaleString("ja-JP")}万円）` : `${level}・あと${Math.round((target - confirmed - added) / 10000).toLocaleString("ja-JP")}万円`}
+          </div>
+        )}
+      </div>
+      <div className="relative mt-2 h-2.5 rounded-full bg-white ring-1 ring-inset ring-slate-200">
+        <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-600" style={{ width: `${(Math.min(confirmed / target * 100, barMax) / barMax) * 100}%` }} />
+        <div
+          className="absolute inset-y-0 rounded-r-full transition-all duration-500 ease-out"
+          style={{ left: `${(Math.min((confirmed / target) * 100, barMax) / barMax) * 100}%`, width: `${((Math.max(0, ((confirmed + added) / target) * 100 - (confirmed / target) * 100)) / barMax) * 100}%`, background: reached ? "#10b981" : "#6366f1", opacity: 0.85 }}
+        />
+        <div className="absolute -bottom-1 -top-1 w-[2px] rounded bg-rose-600" style={{ left: `${(100 / barMax) * 100}%` }} title="目標" />
+      </div>
+    </div>
+  );
+}
+
 function DashboardHero({ month, projects, stocks, target, onEditTarget, onChangeMonth, monthChoices, baseOf = () => 0, refs = [], actualOf = () => null, undecided = [] }) {
   const list = projects.filter((p) => p.scheduledMonth === month);
   const c = computeCounts(list);
@@ -3621,12 +3716,17 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
               <div className={`tabular-nums ${remain <= 0 ? "text-emerald-600" : "text-indigo-700"}`} style={numStyle(22, 600)}>
                 {target <= 0 ? "—" : remain <= 0 ? "達成" : <>あと {manN(remain)}<span className="ml-0.5 text-xs font-semibold">万円</span></>}
               </div>
+              {target > 0 && (
+                <div className={`mt-0.5 text-xs font-semibold tabular-nums ${remain <= 0 ? "text-emerald-600" : "text-slate-500"}`}>
+                  目標の{pct}%達成
+                </div>
+              )}
             </div>
           </div>
 
           {/* 確定＋見込みの積み上げバー（縦線が目標） */}
-          <div>
-            <div className="relative h-3 overflow-visible rounded-full" style={{ background: "var(--c-track)" }}>
+          <div className={target > 0 ? "pt-7" : ""}>
+            <div className="relative h-4 overflow-visible rounded-full" style={{ background: "var(--c-track)" }}>
               <div className="absolute inset-y-0 left-0 flex overflow-hidden rounded-full" style={{ width: barPct(forecast) }}>
                 {[[confirmed, "#059669", 1], [hot, "#e11d48", 0.6], [warm, "#d97706", 0.6], [cool, "#0284c7", 0.6], [stockEst, "#7c3aed", 0.6]]
                   .filter((x) => x[0] > 0)
@@ -3634,11 +3734,23 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
                     <div key={i} style={{ flexGrow: v, flexBasis: 0, background: col, opacity: op }} />
                   ))}
               </div>
-              {target > 0 && <div className="absolute -inset-y-1 w-0.5 rounded bg-slate-800" style={{ left: barPct(target) }} title={`目標 ${formatManYen(target)}`} />}
+              {target > 0 && (() => {
+                const pct = (target / barBase) * 100;
+                const align = pct > 82 ? "-100%" : pct < 18 ? "0%" : "-50%";
+                return (
+                  <>
+                    {/* 目標ライン（赤）と、その上の「目標」ラベル */}
+                    <div className="absolute -bottom-1.5 -top-1.5 z-10 w-[3px] -translate-x-1/2 rounded-full bg-rose-600 shadow-[0_0_0_2px_#fff]" style={{ left: `${pct}%` }} title={`目標 ${formatManYen(target)}`} />
+                    <div className="absolute -top-7 z-10 whitespace-nowrap rounded-md bg-rose-600 px-1.5 py-0.5 text-[11px] font-semibold text-white" style={{ left: `${pct}%`, transform: `translateX(${align})` }}>
+                      目標 {formatManYen(target)}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
-            <div className="mt-1.5 flex justify-between text-[11px] text-slate-400">
-              <span>確定＋見込み {formatManYen(forecast)}</span>
-              <span>│ 目標 {formatManYen(target)}</span>
+            <div className="mt-2 flex justify-between text-[11px] text-slate-500">
+              <span>確定＋見込み <b className="font-semibold text-slate-700">{formatManYen(forecast)}</b>{target > 0 && <span className="ml-1 text-slate-400">（目標の{Math.round((forecast / target) * 100)}%）</span>}</span>
+              {target > 0 && <span className={forecast >= target ? "font-semibold text-emerald-600" : "text-rose-600"}>{forecast >= target ? "見込みで目標達成" : `見込みでもあと ${formatManYen(target - forecast)}`}</span>}
             </div>
           </div>
 
@@ -3659,6 +3771,8 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
               </div>
             ))}
           </div>
+
+          {target > 0 && <GoalSimulator key={month} confirmed={confirmed} target={target} items={[["HOT", hot, "#e11d48"], ["WARM", warm, "#d97706"], ["COOL", cool, "#0284c7"], ["ストック", stockEst, "#7c3aed"]]} />}
         </div>
       </div>
 
@@ -4242,7 +4356,7 @@ function StockForm({ initial, companies, assignees, onSubmit, onCancel }) {
         <div>
           <label className="text-xs font-medium text-slate-500">区分</label>
           <select value={form.category} onChange={(e) => set("category", e.target.value)} className={inputCls}>
-            {STOCK_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            {STOCK_CATEGORIES.map((c) => <option key={c} value={c}>{stockGroupOf(c) === AI_BUDDY ? `AI BUDDY（${c}）` : c}</option>)}
           </select>
         </div>
         <div>
@@ -4691,12 +4805,12 @@ function monthPeriods(fromOffset, toOffset) {
 
 // ストック売上の推移
 function StockTrendChart({ stocks }) {
-  const valueOf = (m, c) => stocks.filter((st) => st.category === c && stockActiveIn(st, m)).reduce((a, st) => a + st.monthlyAmount, 0);
+  const valueOf = (m, c) => stocks.filter((st) => stockGroupOf(st.category) === c && stockActiveIn(st, m)).reduce((a, st) => a + st.monthlyAmount, 0);
   return (
     <StackedTrendCard
       title="ストック売上の推移"
       note="期は8月〜翌年7月。棒の上の数字は月の合計（万円）、今月より右は契約済みの予定です。"
-      categories={STOCK_CATEGORIES}
+      categories={STOCK_GROUPS}
       colors={STOCK_COLORS}
       ranges={(() => {
         const cur = fiscalStart(currentMonthKey());
@@ -4883,13 +4997,14 @@ function StockPage({ stocks, companies, assignees, onAdd, onUpdate, onDelete, on
   const groupOf = (st) => (isEnded(st) ? 2 : isPlanned(st) ? 1 : 0);
   const activeNow = stocks.filter((st) => stockActiveIn(st, thisMonth) && !isPlanned(st));
   const mrr = activeNow.reduce((a, st) => a + st.monthlyAmount, 0);
-  const byCat = STOCK_CATEGORIES.map((c) => {
-    const list = activeNow.filter((st) => st.category === c);
+  // 区分ごとの今月の金額（売上がない区分も0円で表示する）
+  const byCat = STOCK_GROUPS.map((c) => {
+    const list = activeNow.filter((st) => stockGroupOf(st.category) === c);
     return { category: c, count: list.length, amount: list.reduce((a, st) => a + st.monthlyAmount, 0) };
-  }).filter((x) => x.count > 0);
+  });
   const catColors = STOCK_COLORS;
   const shown = stocks
-    .filter((st) => catFilter === "all" || st.category === catFilter)
+    .filter((st) => catFilter === "all" || stockGroupOf(st.category) === catFilter)
     .sort((a, b) => groupOf(a) - groupOf(b) || Number(stockActiveIn(b, thisMonth)) - Number(stockActiveIn(a, thisMonth)) || b.monthlyAmount - a.monthlyAmount);
 
   function statusOf(st) {
@@ -4921,9 +5036,9 @@ function StockPage({ stocks, companies, assignees, onAdd, onUpdate, onDelete, on
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {byCat.map((c) => (
-          <div key={c.category} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div key={c.category} className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${c.count === 0 ? "opacity-70" : ""}`}>
             <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: catColors[c.category] }} />
               {c.category}
@@ -4938,7 +5053,7 @@ function StockPage({ stocks, companies, assignees, onAdd, onUpdate, onDelete, on
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1.5">
-          {["all", ...STOCK_CATEGORIES].map((c) => (
+          {["all", ...STOCK_GROUPS].map((c) => (
             <button
               key={c}
               onClick={() => setCatFilter(c)}
@@ -4989,8 +5104,8 @@ function StockPage({ stocks, companies, assignees, onAdd, onUpdate, onDelete, on
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-400">
                   <span className="flex items-center gap-1 text-slate-500">
-                    <span className="inline-block h-2 w-2 rounded-full" style={{ background: STOCK_COLORS[st.category] || "#94a3b8" }} />
-                    {st.category}
+                    <span className="inline-block h-2 w-2 rounded-full" style={{ background: STOCK_COLORS[stockGroupOf(st.category)] || "#94a3b8" }} />
+                    {stockGroupOf(st.category)}
                   </span>
                   {!st.importedFrom && st.name && <span className="text-slate-500">{st.name}</span>}
                   {st.assignee && <span>{st.assignee}</span>}
@@ -6603,7 +6718,10 @@ export default function App() {
   );
   const thisMonthCounts = computeCounts(thisMonthList);
 
-  const spotlight = boardProjects.filter((p) => p.scheduledMonth === dashMonth && p.confidence === 3 && p.status === "active").slice(0, 3);
+  // 注目案件：選んでいる月のHOT案件をすべて（金額の大きい順）
+  const spotlight = boardProjects
+    .filter((p) => p.scheduledMonth === dashMonth && p.confidence === 3 && p.status === "active")
+    .sort((a, b) => (Number(b.estimatedAmount) || 0) - (Number(a.estimatedAmount) || 0));
   const overallKpi = computeCounts(boardProjects);
   const dashMonthChoices = Array.from(new Set([...monthOptions, currentMonthKey(), dashMonth])).sort();
 
@@ -7135,6 +7253,7 @@ export default function App() {
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
           {renderNav(() => {})}
+          <AiBuddyLink />
         </nav>
         {SHOW_THEME_SWITCHER && <ThemeSwitcher theme={theme} onChange={changeTheme} />}
         <button
@@ -7173,6 +7292,7 @@ export default function App() {
             </div>
             <nav className="flex flex-col gap-1 overflow-y-auto">
               {renderNav(() => setMobileNavOpen(false))}
+              <AiBuddyLink />
             </nav>
             <div className="mt-auto pt-4">
               {SHOW_THEME_SWITCHER && <ThemeSwitcher theme={theme} onChange={changeTheme} />}
@@ -7309,15 +7429,24 @@ export default function App() {
                     onOpenDetail={setDetail}
                     onGoToVisits={() => setView("visits")}
                   />
-                  <div className="flex-1 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">注目案件 <ConfidenceStars value={3} /><span className="font-normal text-slate-400">{Number(dashMonth.slice(5))}月</span></div>
-                    <div className="flex flex-col gap-2.5">
+                  <div className="flex min-h-0 flex-1 flex-col rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      注目案件 <ConfidenceStars value={3} />
+                      <span className="font-normal text-slate-400">{Number(dashMonth.slice(5))}月</span>
+                      {spotlight.length > 0 && (
+                        <span className="ml-auto text-xs font-normal text-slate-500">
+                          {spotlight.length}件・{formatManYen(spotlight.reduce((a, p) => a + (Number(p.estimatedAmount) || 0), 0))}
+                        </span>
+                      )}
+                    </div>
+                    {/* 件数が多いときは枠の中でスクロール */}
+                    <div className="-mr-2 flex max-h-[560px] flex-col gap-2.5 overflow-y-auto pr-2">
                       {spotlight.length === 0 && <div className="text-sm text-slate-400">この月の注目案件はありません</div>}
                       {spotlight.map((p) => (
                         <button
                           key={p.id}
                           onClick={() => setDetail(p)}
-                          className="rounded-2xl border border-amber-200 bg-amber-50/60 px-3.5 py-3 text-left hover:border-amber-300"
+                          className="shrink-0 rounded-2xl border border-amber-200 bg-amber-50/60 px-3.5 py-3 text-left hover:border-amber-300"
                         >
                           <div className="text-sm font-semibold text-slate-900">{p.clientName}</div>
                           <div className="mt-0.5 text-xs text-slate-500">{p.name}・{p.category}</div>
