@@ -825,11 +825,8 @@ function salesItemToProject(x, source) {
     extra = { status: "active", confidence: 2, estimatedAmount: x.amount || 0, confirmedAmount: null };
   }
   const p = { ...base, ...extra };
-  // アタックリスト：受注予定日・売上見込額が両方空欄のときだけCOOL（片方だけ空欄ならWARM。更新日は見ない）
-  // 売上計画：受注月未定ならCOOL
-  if (source === "attack") {
-    if (!p.isReference) p.confidence = !x.month && !x.amount ? 1 : 2;
-  } else if (!p.scheduledMonth) p.confidence = 1;
+  // 受注予定日が空欄・「未定」の案件はCOOL（売上見込額だけ空欄ならWARMのまま）
+  if (!p.scheduledMonth) p.confidence = 1;
   p.history = [{ id: uid(), date: now, type: "created", label: source === "plan" ? "売上計画CSVから登録" : "アタックリストCSVから登録", scheduledMonth: p.scheduledMonth }];
   if (p.status === "won" || p.status === "delivered") p.history.push({ id: uid(), date: now, type: "won", label: "受注", previousStatus: "active" });
   if (p.status === "lost") p.history.push({ id: uid(), date: now, type: "lost", label: "ロスト", previousStatus: "active" });
@@ -3466,7 +3463,7 @@ function CompanyListPage({ projects, onOpenDetail, visits, onAddVisit, stocks = 
 /* ダッシュボード：月ごとの状況（今月フォーカス）                      */
 /* ------------------------------------------------------------------ */
 
-function DashboardHero({ month, projects, stocks, target, onEditTarget, onChangeMonth, monthChoices, baseOf = () => 0, refs = [], actualOf = () => null }) {
+function DashboardHero({ month, projects, stocks, target, onEditTarget, onChangeMonth, monthChoices, baseOf = () => 0, refs = [], actualOf = () => null, undecided = [] }) {
   const list = projects.filter((p) => p.scheduledMonth === month);
   const c = computeCounts(list);
   // 確定金額 = 受注・納品済みの合計 + 制作基礎数字 + ストック売上
@@ -3479,7 +3476,9 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
   const sumOf = (arr) => arr.reduce((a, p) => a + (Number(p.estimatedAmount) || 0), 0);
   const hot = sumOf(open.filter((p) => p.confidence === 3));
   const warm = sumOf(open.filter((p) => p.confidence === 2));
-  const cool = sumOf(open.filter((p) => p.confidence === 1)); // 参考見積りは見込み金額に含めない
+  // 受注月未定の案件（COOL）は、今月の見込みに含めて表示する
+  const undecidedCool = month === currentMonthKey() ? sumOf(undecided.filter((p) => p.status === "active")) : 0;
+  const cool = sumOf(open.filter((p) => p.confidence === 1)) + undecidedCool; // 参考見積りは見込み金額に含めない
   const stock = stockOfMonth(month);
   // 月次シートの売上がある月は運用・管理分も含まれているため、ストックを見込みに足さない
   const stockEst = actualOf(month) !== null ? 0 : stock;
@@ -3646,9 +3645,12 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
           <div className="grid grid-cols-2 gap-2.5">
             {tiles.map(([lb, v, dot, cls]) => (
               <div key={lb} className={`flex items-center justify-between rounded-2xl px-4 py-3 ${cls}`}>
-                <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-                  <span className="inline-block h-2 w-2 rounded-full" style={{ background: dot }} />
-                  {lb}
+                <div className="flex flex-col text-xs font-medium text-slate-600">
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2 w-2 rounded-full" style={{ background: dot }} />
+                    {lb}
+                  </span>
+                  {lb === "COOL" && undecidedCool > 0 && <span className="mt-0.5 text-[10px] font-normal text-sky-600/80">うち受注月未定 {manN(undecidedCool)}万</span>}
                 </div>
                 <div className="tabular-nums" style={{ ...numStyle(22), opacity: v === 0 ? 0.45 : 1 }}>
                   {manN(v)}
@@ -3872,7 +3874,7 @@ function useIsDesktop() {
 }
 
 
-function MonthlyPage({ projects, stocks = [], onOpenDetail, monthlyTarget = 0, targetFor, assignees = [], scope = "all", onScopeChange, baseOf = () => 0, refs = [], actualOf = () => null }) {
+function MonthlyPage({ projects, stocks = [], onOpenDetail, monthlyTarget = 0, targetFor, assignees = [], scope = "all", onScopeChange, baseOf = () => 0, refs = [], actualOf = () => null, undecided = [] }) {
   const per = Math.round(monthlyTarget / Math.max(1, assignees.length));
   const tFor = targetFor || (() => monthlyTarget);
   const perFor = (m) => Math.round(tFor(m) / Math.max(1, assignees.length));
@@ -3906,11 +3908,12 @@ function MonthlyPage({ projects, stocks = [], onOpenDetail, monthlyTarget = 0, t
         </span>
       </div>
       {isAll ? (
-        <MonthlyTable key="all" fy={fy} projects={projects} stocks={stocks} onOpenDetail={onOpenDetail} targetFor={tFor} baseOf={baseOf} refs={refs} actualOf={actualOf} />
+        <MonthlyTable key="all" fy={fy} undecided={undecided} projects={projects} stocks={stocks} onOpenDetail={onOpenDetail} targetFor={tFor} baseOf={baseOf} refs={refs} actualOf={actualOf} />
       ) : (
         <MonthlyTable
           key={scope}
           fy={fy}
+          undecided={undecided.filter((p) => p.assignee === scope)}
           projects={projects.filter((p) => p.assignee === scope)}
           stocks={stocks.filter((st) => st.assignee === scope)}
           onOpenDetail={onOpenDetail}
@@ -3922,7 +3925,7 @@ function MonthlyPage({ projects, stocks = [], onOpenDetail, monthlyTarget = 0, t
   );
 }
 
-function MonthlyTable({ projects, stocks = [], onOpenDetail, target = 0, targetFor, baseOf = () => 0, refs = [], actualOf = () => null, fy }) {
+function MonthlyTable({ projects, stocks = [], onOpenDetail, target = 0, targetFor, baseOf = () => 0, refs = [], actualOf = () => null, fy, undecided = [] }) {
   const tFor = targetFor || (() => target);
   const [openMonth, setOpenMonth] = useState(null);
   const isDesktop = useIsDesktop();
@@ -3942,7 +3945,9 @@ function MonthlyTable({ projects, stocks = [], onOpenDetail, target = 0, targetF
     // 月次シートの売上があればそれを確定金額に、なければ受注・納品済み＋ストック
     const confirmedAll = actual !== null ? actual : c.confirmedTotal + baseAmt; // ストックは見込み
     const stockEst = actual !== null ? 0 : stockTotal;
-    const forecast = confirmedAll + sum(open) + stockEst; // 参考見積りは見込み金額に含めない
+    // 受注月未定の案件（COOL）は今月の見込みに含める
+    const undecidedCool = m === thisMonth ? sum(undecided.filter((p) => p.status === "active")) : 0;
+    const forecast = confirmedAll + sum(open) + undecidedCool + stockEst; // 参考見積りは見込み金額に含めない
     return {
       month: m,
       list,
@@ -3958,7 +3963,8 @@ function MonthlyTable({ projects, stocks = [], onOpenDetail, target = 0, targetF
       projConfirmed: c.confirmedTotal,
       hot: sum(open.filter((p) => p.confidence === 3)),
       warm: sum(open.filter((p) => p.confidence === 2)),
-      cool: sum(open.filter((p) => p.confidence === 1)),
+      cool: sum(open.filter((p) => p.confidence === 1)) + undecidedCool,
+      undecidedCool,
       stock: stockTotal,
       stockEst,
       grand: forecast,
@@ -4064,6 +4070,7 @@ function MonthlyTable({ projects, stocks = [], onOpenDetail, target = 0, targetF
         <span className="flex items-center gap-2 text-[13px] font-medium text-slate-700">
           <span className="inline-block h-2 w-2 rounded-full" style={{ background: it.dot }} />
           {it.label}
+          {it.key === "cool" && r.undecidedCool > 0 && <span className="text-[11px] font-normal text-sky-600/80">（うち受注月未定 {manN(r.undecidedCool)}万）</span>}
         </span>
         <span className="tabular-nums" style={{ ...NUM_FONT, fontWeight: 600, fontSize: 18, opacity: r[it.key] === 0 ? 0.4 : 1 }}>
           {manN(r[it.key])}<span className="ml-0.5 text-[11px]">万円</span>
@@ -5857,13 +5864,13 @@ function SalesImportModal({ open, onClose, onImport, projects, assignees }) {
               <div key={f.name} className="rounded-xl border border-slate-200 p-3">
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <span className="truncate text-sm font-semibold text-slate-800">{f.name}</span>
-                  <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">アタックリスト → WARM（受注予定日・売上見込額が両方空欄はCOOL）</span>
+                  <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">アタックリスト → WARM（受注予定日が空欄・未定はCOOL）</span>
                 </div>
                 <Line label="進行中（案件提案中）" value={`${cnt((x) => x.stage === "active")}件（うち受注月未定 ${cnt((x) => x.stage === "active" && !x.month)}件）`} tone="text-amber-600" />
                 <Line label="受注" value={`${cnt((x) => x.stage === "won")}件（うち受注月未定 ${cnt((x) => x.stage === "won" && !x.month)}件）`} tone="text-emerald-600" />
                 <Line label="ロスト" value={`${cnt((x) => x.stage === "lost")}件`} tone="text-rose-600" />
                 <Line label="参考見積 → 参考見積りページ（金額は入れない）" value={`${cnt((x) => x.stage === "reference")}件（うち受注月未定 ${cnt((x) => x.stage === "reference" && !x.month)}件）`} tone="text-sky-600" />
-                <Line label="受注予定日・売上見込額が両方空欄 → COOL" value={`${cnt((x) => x.stage !== "reference" && !x.month && !x.amount)}件（売上見込額が未記入・赤枠は計 ${cnt((x) => x.stage !== "reference" && !x.amount)}件）`} tone="text-rose-600" />
+                <Line label="受注予定日が空欄・未定 → COOL" value={`${cnt((x) => x.stage !== "reference" && !x.month)}件（売上見込額が未記入・赤枠は計 ${cnt((x) => x.stage !== "reference" && !x.amount)}件）`} tone="text-rose-600" />
                 <div className="mt-1 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-slate-500">
                   読み込まない行：移動済 {p.skipped.moved}件・更新日が{fyYear}年8月より前 {p.skipped.old}件・受注予定／更新日／金額がすべて空欄の受注・ロスト {p.skipped.empty}件・対象外のステージ（飛び込みなど）{p.skipped.stage}件・対象外の担当 {p.skipped.assignee}件
                 </div>
@@ -6962,7 +6969,7 @@ export default function App() {
 
   function saveEditProject(form) {
     const { monthUndecided, ...rest } = form;
-    updateProject(editing.id, { ...rest, confidence: monthUndecided && !(editing.importedFrom === "attack" && Number(form.estimatedAmount) > 0) ? 1 : rest.confidence, scheduledMonth: monthUndecided ? null : rest.scheduledMonth || null, estimatedAmount: Number(form.estimatedAmount) || 0, amountMissing: !(Number(form.estimatedAmount) > 0) && editing.amountMissing });
+    updateProject(editing.id, { ...rest, confidence: monthUndecided ? 1 : rest.confidence, scheduledMonth: monthUndecided ? null : rest.scheduledMonth || null, estimatedAmount: Number(form.estimatedAmount) || 0, amountMissing: !(Number(form.estimatedAmount) > 0) && editing.amountMissing });
     pushToast("案件を更新しました");
     setEditing(null);
   }
@@ -7286,6 +7293,7 @@ export default function App() {
                     baseOf={baseOf}
                     actualOf={actualOf}
                     refs={referenceProjects}
+                    undecided={undecidedProjects}
                     onEditTarget={() => setShowTargetEdit(true)}
                     onChangeMonth={(m) => {
                       setDashMonth(m);
@@ -7324,7 +7332,7 @@ export default function App() {
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <StatTile label="全体の案件数" value={overallKpi.total} unit="件" sub={`進行中 ${overallKpi.active}件`} />
                 <StatTile label="全体の受注率" value={overallKpi.rate ?? "—"} unit={overallKpi.rate !== null ? "%" : ""} tone="text-indigo-600" sub={`受注 ${overallKpi.won}・ロスト ${overallKpi.lost}`} />
-                <StatTile label="見込み金額（全体）" value={Math.round(overallKpi.estimatedTotal / 10000).toLocaleString("ja-JP")} unit="万円" tone="text-amber-600" sub="進行中の案件の合計" />
+                <StatTile label="見込み金額（全体）" value={Math.round((overallKpi.estimatedTotal + undecidedProjects.filter((p) => p.status === "active").reduce((a, p) => a + (Number(p.estimatedAmount) || 0), 0)) / 10000).toLocaleString("ja-JP")} unit="万円" tone="text-amber-600" sub="進行中の案件の合計（受注月未定を含む）" />
                 <StatTile label="確定金額（全体）" value={Math.round(overallKpi.confirmedTotal / 10000).toLocaleString("ja-JP")} unit="万円" tone="text-emerald-600" sub="受注＋納品済み" />
               </div>
 
@@ -7415,7 +7423,7 @@ export default function App() {
 
           {view === "monthly" && (
             <div className="mx-auto max-w-6xl">
-              <MonthlyPage projects={boardProjects} stocks={stocks} onOpenDetail={setDetail} monthlyTarget={monthlyTarget} targetFor={targetFor} baseOf={baseOf} actualOf={actualOf} refs={referenceProjects} assignees={assigneeNames} scope={monthlyScope} onScopeChange={setMonthlyScope} />
+              <MonthlyPage projects={boardProjects} undecided={undecidedProjects} stocks={stocks} onOpenDetail={setDetail} monthlyTarget={monthlyTarget} targetFor={targetFor} baseOf={baseOf} actualOf={actualOf} refs={referenceProjects} assignees={assigneeNames} scope={monthlyScope} onScopeChange={setMonthlyScope} />
             </div>
           )}
 

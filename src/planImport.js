@@ -227,7 +227,7 @@ export function parseAttackCsv(text, { minUpdated = "2026-08-01" } = {}) {
     const scheduled = parseYm(get(r, "scheduled"), { updated });
     const amount = yenOf(get(r, "amount"));
     // 受注予定日・更新日・売上見込額がすべて空欄の行は読み込まない。
-    // ただし進行中（案件提案中）は、受注予定日・売上見込額が空欄ならCOOLとして読み込む（更新日は見ない）
+    // ただし進行中（案件提案中）は、受注予定日が空欄ならCOOLとして読み込む（更新日は見ない）
     if (!scheduled && !updated && !amount && stage !== "active") {
       skipped.empty++;
       continue;
