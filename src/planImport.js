@@ -226,7 +226,9 @@ export function parseAttackCsv(text, { minUpdated = "2026-08-01" } = {}) {
     const updated = parseYmd(get(r, "updated"));
     const scheduled = parseYm(get(r, "scheduled"), { updated });
     const amount = yenOf(get(r, "amount"));
-    if (!scheduled && !updated && !amount) {
+    // 受注予定日・更新日・売上見込額がすべて空欄の行は読み込まない。
+    // ただし進行中（案件提案中）は、受注予定日・売上見込額が空欄ならCOOLとして読み込む（更新日は見ない）
+    if (!scheduled && !updated && !amount && stage !== "active") {
       skipped.empty++;
       continue;
     }
@@ -270,6 +272,7 @@ const toHalf = (v) => String(v || "").replace(/[０-９]/g, (d) => String.fromCh
 // 年がないときは更新日に一番近い年にする（更新日もなければ年が分からないため未記入扱い）。
 function parseYm(v, { updated = null } = {}) {
   const s = toHalf(v).trim();
+  if (/未定|未決定/.test(s)) return null; // 「未定」と書かれた受注予定日は空欄とみなす
   const m = s.match(/(\d{4})\s*[年\/\-.]\s*(\d{1,2})/);
   if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}`;
   const mo = s.match(/^(\d{1,2})\s*月/);

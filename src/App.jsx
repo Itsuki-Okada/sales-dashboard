@@ -5851,7 +5851,7 @@ function SalesImportModal({ open, onClose, onImport, projects, assignees }) {
                 <Line label="参考見積 → 参考見積りページ（金額は入れない）" value={`${cnt((x) => x.stage === "reference")}件（うち受注月未定 ${cnt((x) => x.stage === "reference" && !x.month)}件）`} tone="text-sky-600" />
                 <Line label="受注予定日・売上見込額が両方空欄 → COOL" value={`${cnt((x) => x.stage !== "reference" && !x.month && !x.amount)}件（売上見込額が未記入・赤枠は計 ${cnt((x) => x.stage !== "reference" && !x.amount)}件）`} tone="text-rose-600" />
                 <div className="mt-1 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-slate-500">
-                  読み込まない行：移動済 {p.skipped.moved}件・更新日が{fyYear}年8月より前 {p.skipped.old}件・受注予定／更新日／金額がすべて空欄 {p.skipped.empty}件・対象外のステージ（飛び込みなど）{p.skipped.stage}件・対象外の担当 {p.skipped.assignee}件
+                  読み込まない行：移動済 {p.skipped.moved}件・更新日が{fyYear}年8月より前 {p.skipped.old}件・受注予定／更新日／金額がすべて空欄の受注・ロスト {p.skipped.empty}件・対象外のステージ（飛び込みなど）{p.skipped.stage}件・対象外の担当 {p.skipped.assignee}件
                 </div>
               </div>
             );
