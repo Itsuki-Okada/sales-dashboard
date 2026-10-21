@@ -1,0 +1,46 @@
+rules_version = '2';
+
+// ------------------------------------------------------------------
+// 案件管理ダッシュボード用 Firestore セキュリティルール
+//
+// ・ログインしていて、かつ members/{自分のUID} が登録されている人だけが
+//   データを読み書きできます。
+// ・members はアプリからは書き換えられません（Firebaseコンソールで管理者だけが登録）。
+//   → 誰かが勝手にアカウントを作っても、メンバー登録がなければ何も見られません。
+// ・上記以外のコレクションはすべて拒否します。
+// ------------------------------------------------------------------
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isMember() {
+      return signedIn() && exists(/databases/$(database)/documents/members/$(request.auth.uid));
+    }
+
+    // メンバー名簿：自分の登録だけ読める。書き込みはコンソールからのみ
+    match /members/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /projects/{id} {
+      allow read, write: if isMember();
+    }
+    match /visits/{id} {
+      allow read, write: if isMember();
+    }
+    match /stocks/{id} {
+      allow read, write: if isMember();
+    }
+    match /settings/{id} {
+      allow read, write: if isMember();
+    }
+
+    // それ以外はすべて拒否
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
