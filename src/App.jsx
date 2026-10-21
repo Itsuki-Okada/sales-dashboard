@@ -9,7 +9,7 @@ import {
   Trash2, Pencil, CheckCircle2, XCircle, Clock3, ArrowRight,
   TrendingUp, TrendingDown, Building2, Truck, Menu, MapPin, FileCheck,
   ArrowUpDown, Target, Link2, FileText, Upload, AlertTriangle, RefreshCw, Repeat, BarChart4,
-  Eye, EyeOff, LogOut, Lock,
+  Eye, EyeOff, LogOut, Lock, History, Undo2,
 } from "lucide-react";
 import { parseSalesFile, ALLOWED_ASSIGNEES, fiscalStartFromName } from "./planImport";
 import { useAuthState, useFirestoreList, useSettings, login, logout } from "./firestoreService";
@@ -881,6 +881,44 @@ function applySalesDiff(projects, diff) {
   const removedIds = new Set((diff.removed || []).map((p) => p.id));
   return [...out.filter((p) => !removedIds.has(p.id)), ...diff.added];
 }
+
+/* ---------------------- CSV取り込みの履歴・取り消し ---------------------- */
+// 取り込み前と後の一覧を比べ、「追加されたID」と「変わった・消えた項目の取り込み前の内容」だけを記録する。
+const IMPORT_LOG_LIMIT = 20; // 残しておく履歴の件数
+function sortedJson(v) {
+  if (Array.isArray(v)) return `[${v.map(sortedJson).join(",")}]`;
+  if (v && typeof v === "object") return `{${Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => `${JSON.stringify(k)}:${sortedJson(v[k])}`).join(",")}}`;
+  return JSON.stringify(v === undefined ? null : v);
+}
+function listSnapshot(before, after) {
+  const afterMap = new Map(after.map((x) => [x.id, x]));
+  const beforeIds = new Set(before.map((x) => x.id));
+  const addedIds = after.filter((x) => !beforeIds.has(x.id)).map((x) => x.id);
+  const changed = before.filter((x) => {
+    const a = afterMap.get(x.id);
+    return !a || sortedJson(a) !== sortedJson(x);
+  });
+  // Firestoreに保存できない undefined を取り除く
+  return { addedIds, before: JSON.parse(JSON.stringify(changed)) };
+}
+function revertSnapshot(list, snap) {
+  if (!snap) return list;
+  const drop = new Set(snap.addedIds || []);
+  const restore = new Map((snap.before || []).map((x) => [x.id, x]));
+  const out = list.filter((x) => !drop.has(x.id)).map((x) => (restore.has(x.id) ? restore.get(x.id) : x));
+  const have = new Set(out.map((x) => x.id));
+  (snap.before || []).forEach((x) => {
+    if (!have.has(x.id)) out.push(x);
+  });
+  return out;
+}
+// 設定（月の目標・月次売上・前年度売上）は、上書きした月の取り込み前の値を記録（なかった月は null）
+function settingsSnapshot(current, incoming) {
+  const out = {};
+  Object.keys(incoming || {}).forEach((k) => (out[k] = current && current[k] !== undefined ? current[k] : null));
+  return out;
+}
+const snapCount = (snap) => (snap ? (snap.addedIds || []).length + (snap.before || []).length : 0);
 
 // ストック（月額）契約が指定月に有効か。
 function stockActiveIn(stock, month) {
@@ -4803,7 +4841,7 @@ function UnyoImportModal({ open, onClose, onImport, existingCount, stocks = [] }
         <button onClick={close} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">キャンセル</button>
         <button
           disabled={!parsed || applyCount === 0}
-          onClick={() => onImport(replaceAll ? { replaceAll: true, list: incoming } : { diff })}
+          onClick={() => onImport(replaceAll ? { replaceAll: true, list: incoming, fileName } : { diff, fileName })}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
         >
           {!parsed ? "読み込む" : applyCount === 0 ? "変更はありません" : `${applyCount}件を反映する`}
@@ -5633,6 +5671,70 @@ function ReferenceEstimatesPage({ referenceProjects, onPromote, onEdit, onDelete
 }
 
 // 売上計画（上期・下期）とアタックリストのCSVを読み込む
+// 取り込み履歴：新しい順に表示し、まだ取り消していない一番新しい回だけ取り消せる
+function ImportHistoryModal({ open, onClose, logs, onUndo }) {
+  const [confirmId, setConfirmId] = useState(null);
+  if (!open) return null;
+  const list = [...logs].sort((a, b) => (a.at < b.at ? 1 : -1));
+  const latest = list.find((l) => !l.undone);
+  const fmt = (iso) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+  return (
+    <Modal open={open} onClose={() => { setConfirmId(null); onClose(); }} title="CSVの取り込み履歴" width="max-w-2xl">
+      <div className="flex flex-col gap-3">
+        {list.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">まだCSVの取り込みはありません。</div>
+        ) : (
+          list.map((l) => {
+            const canUndo = latest && latest.id === l.id;
+            return (
+              <div key={l.id} className={`rounded-xl border p-3 ${l.undone ? "border-slate-100 bg-slate-50" : "border-slate-200 bg-white"}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${l.kind === "stock" ? "bg-violet-50 text-violet-700" : "bg-indigo-50 text-indigo-700"}`}>
+                      {l.kind === "stock" ? "運用売上" : "売上計画・アタックリスト"}
+                    </span>
+                    <span className="text-xs tabular-nums text-slate-500">{fmt(l.at)}</span>
+                    {l.undone && <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-500">取り消し済み</span>}
+                  </div>
+                  {canUndo && confirmId !== l.id && (
+                    <button onClick={() => setConfirmId(l.id)} className="flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">
+                      <Undo2 size={13} />
+                      取り消す
+                    </button>
+                  )}
+                </div>
+                <div className={`mt-1.5 truncate text-sm font-medium ${l.undone ? "text-slate-400" : "text-slate-800"}`}>{(l.files || []).join("、") || "CSV"}</div>
+                <div className={`mt-0.5 text-xs ${l.undone ? "text-slate-400" : "text-slate-500"}`}>{l.summary}</div>
+                {confirmId === l.id && (
+                  <div className="mt-2 rounded-lg border border-rose-100 bg-rose-50/70 p-2.5 text-xs leading-relaxed text-rose-700">
+                    この取り込みを取り消して、取り込む前の状態に戻します。取り込みで追加された案件は削除され、変更・削除された案件は元に戻ります（取り込みの後にその案件を手で編集していた場合、その編集も元に戻ります）。
+                    <div className="mt-2 flex justify-end gap-2">
+                      <button onClick={() => setConfirmId(null)} className="rounded-lg px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white">やめる</button>
+                      <button
+                        onClick={() => {
+                          onUndo(l);
+                          setConfirmId(null);
+                        }}
+                        className="rounded-lg bg-rose-600 px-3 py-1 text-xs font-medium text-white hover:bg-rose-700"
+                      >
+                        取り消す
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+        {list.length > 0 && <div className="text-[11px] text-slate-400">取り消しは新しい回から順にできます。履歴は直近{IMPORT_LOG_LIMIT}回分まで残ります。</div>}
+      </div>
+    </Modal>
+  );
+}
+
 function SalesImportModal({ open, onClose, onImport, projects, assignees }) {
   const [files, setFiles] = useState([]);
   const fyYear = Number(fiscalStart(currentMonthKey()).slice(0, 4));
@@ -5793,7 +5895,7 @@ function SalesImportModal({ open, onClose, onImport, projects, assignees }) {
         <button onClick={close} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">キャンセル</button>
         <button
           disabled={!files.length || (applyCount === 0 && !hasPlan)}
-          onClick={() => onImport({ diff, targets, actuals, prevYear })}
+          onClick={() => onImport({ diff, targets, actuals, prevYear, fileNames: files.map((f) => f.name) })}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
         >
           {!files.length ? "反映する" : applyCount === 0 ? (hasPlan ? "売上・目標を反映する" : "変更はありません") : `${applyCount}件を反映する`}
@@ -6344,6 +6446,7 @@ export default function App() {
   const [projects, setProjects] = useFirestoreList("projects", ready, onSyncError);
   const [visits, setVisits] = useFirestoreList("visits", ready, onSyncError);
   const [stocks, setStocks] = useFirestoreList("stocks", ready, onSyncError);
+  const [importLogs, setImportLogs] = useFirestoreList("importLogs", ready, onSyncError); // CSV取り込みの履歴（取り消し用）
   const [settings, updateSettings] = useSettings(ready, onSyncError);
   const [companyJump, setCompanyJump] = useState(null);
   const [monthlyScope, setMonthlyScope] = useState("all");
@@ -6358,6 +6461,7 @@ export default function App() {
   const setPrevRevenue = settingSetter("prevRevenue");
   const setMonthTargets = settingSetter("monthTargets");
   const [showSalesImport, setShowSalesImport] = useState(false);
+  const [showImportHistory, setShowImportHistory] = useState(false);
   const [theme, setTheme] = useState(() => {
     const t = SHOW_THEME_SWITCHER ? loadTheme() : "a"; // 切り替えを出さないときはライトで固定
     if (typeof document !== "undefined") document.documentElement.dataset.theme = t;
@@ -6694,14 +6798,45 @@ export default function App() {
     setStocks((l) => l.map((x) => (x.id === id ? { ...x, ...form } : x)));
     pushToast("ストックを更新しました");
   }
+  function addImportLog(entry) {
+    const log = { id: uid(), at: new Date().toISOString(), undone: false, ...entry };
+    setImportLogs((l) => {
+      const all = [...l, log].sort((a, b) => (a.at < b.at ? -1 : 1));
+      return all.slice(Math.max(0, all.length - IMPORT_LOG_LIMIT));
+    });
+  }
+  function undoImport(log) {
+    const latest = [...importLogs].filter((l) => !l.undone).sort((a, b) => (a.at < b.at ? 1 : -1))[0];
+    if (!latest || latest.id !== log.id) return;
+    if (log.projects) setProjects((l) => revertSnapshot(l, log.projects));
+    if (log.stocks) setStocks((l) => revertSnapshot(l, log.stocks));
+    const st = log.settings || {};
+    // 取り込み前になかった月（null）は消し、あった月は元の値に戻す
+    const restoreMap = (snap) => (cur) => {
+      const n = { ...(cur || {}) };
+      Object.entries(snap).forEach(([k, v]) => {
+        if (v === null) delete n[k];
+        else n[k] = v;
+      });
+      return n;
+    };
+    if (st.monthTargets && Object.keys(st.monthTargets).length) setMonthTargets(restoreMap(st.monthTargets));
+    if (st.actualRevenue && Object.keys(st.actualRevenue).length) setActualRevenue(restoreMap(st.actualRevenue));
+    if (st.prevRevenue && Object.keys(st.prevRevenue).length) setPrevRevenue(restoreMap(st.prevRevenue));
+    setImportLogs((l) => l.map((x) => (x.id === log.id ? { ...x, undone: true, undoneAt: new Date().toISOString() } : x)));
+    pushToast("CSVの取り込みを取り消しました");
+  }
   function importUnyoStocks(payload) {
     if (payload.replaceAll) {
+      addImportLog({ kind: "stock", files: payload.fileName ? [payload.fileName] : [], summary: `ストックを${payload.list.length}件で置き換え`, stocks: listSnapshot(stocks, payload.list) });
       setStocks(payload.list);
       pushToast(`運用売上CSVの${payload.list.length}件でストックを置き換えました`);
       return;
     }
     const { diff } = payload;
-    setStocks((l) => applyUnyoDiff(l, diff));
+    const nextStocks = applyUnyoDiff(stocks, diff);
+    addImportLog({ kind: "stock", files: payload.fileName ? [payload.fileName] : [], summary: `新規${diff.added.length}件・変更${diff.changed.length}件`, stocks: listSnapshot(stocks, nextStocks) });
+    setStocks(nextStocks);
     pushToast(`運用売上CSVを反映しました（新規${diff.added.length}件・変更${diff.changed.length}件／変更なし${diff.unchanged.length}件は読み込みませんでした）`);
   }
   function deleteStock(st) {
@@ -6788,8 +6923,20 @@ export default function App() {
     pushToast(`「${project.clientName}」を${monthLabel(month)}に設定しました`);
   }
 
-  function importSales({ diff, targets, actuals = {}, prevYear = {} }) {
-    setProjects((list) => applySalesDiff(list, diff));
+  function importSales({ diff, targets, actuals = {}, prevYear = {}, fileNames = [] }) {
+    const nextProjects = applySalesDiff(projects, diff);
+    const sumParts = [`新規${diff.added.length}件`, `変更${diff.changed.length}件`];
+    if (diff.removed && diff.removed.length) sumParts.push(`削除${diff.removed.length}件`);
+    if (Object.keys(actuals).length) sumParts.push(`月次売上${Object.keys(actuals).length}か月分`);
+    if (Object.keys(targets).length) sumParts.push(`目標${Object.keys(targets).length}か月分`);
+    addImportLog({
+      kind: "sales",
+      files: fileNames,
+      summary: sumParts.join("・"),
+      projects: listSnapshot(projects, nextProjects),
+      settings: { monthTargets: settingsSnapshot(monthTargets, targets), actualRevenue: settingsSnapshot(actualRevenue, actuals), prevRevenue: settingsSnapshot(prevRevenue, prevYear) },
+    });
+    setProjects(nextProjects);
     if (Object.keys(targets).length) setMonthTargets((t) => ({ ...t, ...targets }));
     if (Object.keys(actuals).length) setActualRevenue((a) => ({ ...a, ...actuals }));
     if (Object.keys(prevYear).length) setPrevRevenue((a) => ({ ...a, ...prevYear }));
@@ -7074,6 +7221,14 @@ export default function App() {
               <Upload size={16} />
               CSV取り込み
             </button>
+            <button
+              onClick={() => setShowImportHistory(true)}
+              title="取り込み履歴・取り消し"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 sm:px-3.5"
+            >
+              <History size={16} />
+              <span className="hidden sm:inline">取り込み履歴</span>
+            </button>
             {SHOW_HEADER_EXTRAS && (
               <button
                 onClick={() => setShowSheetSync(true)}
@@ -7348,6 +7503,7 @@ export default function App() {
         onToggleAuto={setAutoSync}
       />
       <ImportCsvModal open={showImport} onClose={() => setShowImport(false)} onImport={importFromCsv} existingKeys={existingCsvKeys} />
+      <ImportHistoryModal open={showImportHistory} onClose={() => setShowImportHistory(false)} logs={importLogs} onUndo={undoImport} />
       <SalesImportModal open={showSalesImport} onClose={() => setShowSalesImport(false)} onImport={importSales} projects={projects} assignees={assigneeNames} />
 
       <Modal open={showTargetEdit} onClose={() => setShowTargetEdit(false)} title="月間目標を設定" width="max-w-sm">

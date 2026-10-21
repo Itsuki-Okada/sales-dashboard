@@ -17,6 +17,7 @@ import {
 //   visits/{visitId}       … 訪問記録
 //   stocks/{stockId}       … ストック売上（運用・保守などの月額契約）
 //   settings/app           … 設定（月間目標・月ごとの目標・月次シートの売上・前年度売上）
+//   importLogs/{logId}     … CSV取り込みの履歴（取り消し用。直近20回分）
 //   members/{uid}          … ログインを許可するメンバー（Firebaseコンソールで作成）
 //
 // セキュリティルール（firestore.rules）で「members に登録されたログイン中の
@@ -170,7 +171,9 @@ export function useSettings(enabled, onError) {
     const value = typeof patch === "function" ? patch(ref.current) : patch;
     ref.current = { ...ref.current, ...value };
     setSettings(ref.current);
-    return setDoc(settingsRef, JSON.parse(JSON.stringify(value)), { merge: true }).catch((err) => onError && onError(err));
+    // 渡した項目（monthTargets など）は中身ごと置き換える（取り消しで月を消せるように）
+    const data = JSON.parse(JSON.stringify(value));
+    return setDoc(settingsRef, data, { mergeFields: Object.keys(data) }).catch((err) => onError && onError(err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return [settings, update];

@@ -37,6 +37,9 @@ service cloud.firestore {
     match /settings/{id} {
       allow read, write: if isMember();
     }
+    match /importLogs/{id} {
+      allow read, write: if isMember();
+    }
 
     // それ以外はすべて拒否
     match /{document=**} {
