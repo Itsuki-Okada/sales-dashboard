@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend, Cell, LabelList, ReferenceLine, ComposedChart,
+  Tooltip, ResponsiveContainer, Legend, Cell, LabelList, ReferenceLine, ReferenceArea, ComposedChart,
 } from "recharts";
 import {
   Search, Plus, MoreHorizontal, ChevronDown, ChevronRight, ChevronLeft, X,
@@ -2543,7 +2543,69 @@ function YoyBadge({ yoy }) {
 
 // 毎月の売上 = 確定案件（運用・管理を除く）+ 制作基礎数字 + ストック売上
 // 月次シートの売上（actualOf）がある月はその金額を確定売上として使う。prevOf は前年同月の売上（18期など）。
-function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [], actualOf = () => null, prevOf = () => null }) {
+// 前年度売上の手入力（表示中の期の前年同月12か月分。空欄にすると手入力をやめて元の値に戻る）
+function PrevRevenueEditModal({ open, onClose, fy, prevManual = {}, prevOf = () => null, onSave }) {
+  const prevFy = addMonths(fy, -12);
+  const months = fiscalPeriods(prevFy).map((p) => p.key);
+  const [vals, setVals] = useState({});
+  useEffect(() => {
+    if (!open) return;
+    const init = {};
+    months.forEach((m) => (init[m] = prevManual[m] !== undefined && prevManual[m] !== null ? String(Math.round(prevManual[m] / 10000)) : ""));
+    setVals(init);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, fy]);
+  if (!open) return null;
+  return (
+    <Modal open={open} onClose={onClose} title={`前年度売上を入力（${fiscalNo(prevFy)}期：${fiscalLabel(prevFy)}）`} width="max-w-xl">
+      <div className="text-xs leading-relaxed text-slate-500">月別売上の「前年同月」に使う金額を万円で入力します。入力した月は、CSVで読み込んだ前年度売上より優先されます。空欄にすると元の値に戻ります。</div>
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {months.map((m) => {
+          const cur = prevOf(m);
+          return (
+            <label key={m} className="rounded-xl border border-slate-200 p-2.5">
+              <div className="flex items-baseline justify-between text-xs font-medium text-slate-600">
+                {monthLabel(m)}
+                {vals[m] !== "" && <span className="rounded-full bg-indigo-50 px-1.5 text-[10px] text-indigo-700">手入力</span>}
+              </div>
+              <div className="mt-1 flex items-center gap-1">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={vals[m] ?? ""}
+                  placeholder={cur !== null && cur !== undefined ? String(Math.round(cur / 10000)) : "未入力"}
+                  onChange={(e) => setVals((v) => ({ ...v, [m]: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-right text-sm tabular-nums focus:border-indigo-400 focus:outline-none"
+                />
+                <span className="shrink-0 text-xs text-slate-500">万円</span>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">キャンセル</button>
+        <button
+          onClick={() => {
+            const patch = {};
+            months.forEach((m) => {
+              const t = String(vals[m] ?? "").trim();
+              const n = Number(t);
+              patch[m] = t === "" || !Number.isFinite(n) ? null : Math.round(n * 10000);
+            });
+            onSave(patch);
+          }}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          保存する
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [], actualOf = () => null, prevOf = () => null, prevManual = {}, onSavePrevManual }) {
+  const [showPrevEdit, setShowPrevEdit] = useState(false);
   const catColor = { 売上: "#4f46e5" };
   // カテゴリー別（WEB・グラフィック等）は出さず、売上1本で表示。ストックは見込みのため売上に含めない
   const SALES = "売上";
@@ -2586,6 +2648,17 @@ function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [
 
   return (
     <div className="flex flex-col gap-5">
+      <PrevRevenueEditModal
+        open={showPrevEdit}
+        onClose={() => setShowPrevEdit(false)}
+        fy={fy}
+        prevManual={prevManual}
+        prevOf={prevOf}
+        onSave={(patch) => {
+          onSavePrevManual && onSavePrevManual(patch);
+          setShowPrevEdit(false);
+        }}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-2 pl-4 shadow-sm">
         <div className="text-sm text-slate-600">
           表示する期 <span className="text-xs text-slate-400">（8月〜翌年7月で1期）</span>
@@ -2697,6 +2770,12 @@ function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [
         <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pb-3 pt-5">
           <div className="text-sm font-semibold text-slate-800">月別サマリー（{fiscalLabel(fy)}）</div>
           {SHOW_HELP_TEXT && <div className="text-xs text-slate-400">金額は万円・前年比は前年同月との比較</div>}
+          {onSavePrevManual && (
+            <button onClick={() => setShowPrevEdit(true)} className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+              <Pencil size={13} />
+              前年度売上を入力
+            </button>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-sm">
@@ -2778,8 +2857,185 @@ function MonthlyRevenuePage({ projects, monthlyTarget = 0, targetFor, stocks = [
   );
 }
 
+
+/* ---------------- 年別売上：売上の構成と営業で必要な売上 ---------------- */
+const BASE_LABEL = "制作基礎数字";
+const SALES_LABEL = "営業売上（確定）";
+const GAP_LABEL = "目標までの不足";
+const COMPOSITION_COLORS = { [BASE_LABEL]: "#94a3b8", ...STOCK_COLORS, [SALES_LABEL]: "#0f172a", [GAP_LABEL]: "#e11d48" };
+const DEFAULT_BASE_MONTHLY = 4000000; // 制作基礎数字（月）のデフォルト：400万円
+
+function YearlyCompositionSection({ projects, stocks = [], targetFor, fyList, baseMonthly = DEFAULT_BASE_MONTHLY, onChangeBaseMonthly }) {
+  const curFy = fiscalStart(currentMonthKey());
+  const [fy, setFy] = useState(curFy);
+  const [editBase, setEditBase] = useState(false);
+  const [baseInput, setBaseInput] = useState("");
+  const cats = [BASE_LABEL, ...STOCK_GROUPS, SALES_LABEL, GAP_LABEL];
+  const isConfirmed = (p) => p.status === "won" || p.status === "delivered";
+  const tgt = (m) => (typeof targetFor === "function" ? targetFor(m) : 0) || 0;
+  const monthsOf = (f) => fiscalPeriods(f).map((p) => p.key);
+  // 月ごとの各項目の金額
+  const monthVal = (m, c) => {
+    if (c === BASE_LABEL) return baseMonthly;
+    if (STOCK_GROUPS.includes(c)) return stocks.filter((st) => stockGroupOf(st.category) === c && stockActiveIn(st, m)).reduce((a, st) => a + (Number(st.monthlyAmount) || 0), 0);
+    if (c === SALES_LABEL) return projects.filter((p) => p.scheduledMonth === m && isConfirmed(p)).reduce((a, p) => a + (Number(p.confirmedAmount) || 0), 0);
+    if (c === GAP_LABEL) return Math.max(0, tgt(m) - cats.filter((x) => x !== GAP_LABEL).reduce((a, x) => a + monthVal(m, x), 0));
+    return 0;
+  };
+  const fyVal = (f, c) => {
+    const ms = monthsOf(f);
+    if (c === GAP_LABEL) {
+      const target = ms.reduce((a, m) => a + tgt(m), 0);
+      const have = cats.filter((x) => x !== GAP_LABEL).reduce((a, x) => a + ms.reduce((b, m) => b + monthVal(m, x), 0), 0);
+      return Math.max(0, target - have);
+    }
+    return ms.reduce((a, m) => a + monthVal(m, c), 0);
+  };
+  const valueOf = (key, c) => (key.startsWith("FY") ? fyVal(key.slice(2), c) : monthVal(key, c));
+
+  // 選んでいる期の数字
+  const ms = monthsOf(fy);
+  const target = ms.reduce((a, m) => a + tgt(m), 0);
+  const baseTotal = fyVal(fy, BASE_LABEL);
+  const stockTotals = STOCK_GROUPS.map((g) => ({ g, v: fyVal(fy, g) }));
+  const stockTotal = stockTotals.reduce((a, x) => a + x.v, 0);
+  const fixedTotal = baseTotal + stockTotal;
+  const need = Math.max(0, target - fixedTotal); // 営業で売り上げる必要がある金額
+  const salesDone = fyVal(fy, SALES_LABEL);
+  const salesLeft = Math.max(0, need - salesDone);
+  const nowM = currentMonthKey();
+  const monthsLeft = ms.filter((m) => m >= nowM).length;
+  const perMonth = monthsLeft ? salesLeft / monthsLeft : 0;
+  const pctOfTarget = (v) => (target > 0 ? Math.round((v / target) * 1000) / 10 : 0);
+  const fyPeriods = Array.from(new Set([...fyList, curFy])).sort().map((f) => ({ key: `FY${f}`, label: `${fiscalNo(f)}期`, fullLabel: `${fiscalNo(f)}期（${fiscalLabel(f)}）`, isNow: f === curFy, isFuture: f > curFy }));
+  const rows = [
+    { label: BASE_LABEL, v: baseTotal, note: `月${fmtMan(baseMonthly)}万円 × 12か月` },
+    ...stockTotals.map((x) => ({ label: x.g, v: x.v })),
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[15px] font-semibold tracking-tight text-slate-900">売上の構成と、営業で必要な売上</div>
+        <FiscalYearPicker value={fy} onChange={setFy} />
+      </div>
+
+      <StackedTrendCard
+        key={fy}
+        title={`${fiscalNo(fy)}期の売上構成（基礎数字・ストック・営業）`}
+        categories={cats}
+        colors={COMPOSITION_COLORS}
+        ghostCats={[GAP_LABEL]}
+        ranges={[
+          { key: "fy", label: "期ごと", periods: fyPeriods },
+          { key: "month", label: `${fiscalNo(fy)}期の月別`, periods: fiscalPeriods(fy) },
+        ]}
+        defaultRangeKey="fy"
+        valueOf={valueOf}
+        nowLabel={(rk) => (rk === "fy" ? "今期" : "今月")}
+        hideChips
+        target={(k) => (k.startsWith("FY") ? monthsOf(k.slice(2)).reduce((a, m) => a + tgt(m), 0) : tgt(k))}
+        showDiff={false}
+        summary={() => [
+          { label: `${fiscalNo(fy)}期の売上目標`, value: fmtMan(target), sub: "各月の目標の合計" },
+          { label: "基礎数字＋ストック", value: fmtMan(fixedTotal), sub: `目標の${pctOfTarget(fixedTotal)}%` },
+          { label: "営業で必要な売上", value: fmtMan(need), sub: `目標 − 基礎数字 − ストック`, accent: true },
+          { label: "営業の残り", value: fmtMan(salesLeft), sub: monthsLeft ? `確定 ${fmtMan(salesDone)}万円・残り${monthsLeft}か月で月${fmtMan(perMonth)}万円` : `確定 ${fmtMan(salesDone)}万円`, tone: salesLeft > 0 ? "text-rose-600" : "text-emerald-600" },
+        ]}
+        legend={[...cats.filter((c) => c !== GAP_LABEL).map((c) => ({ label: c, color: COMPOSITION_COLORS[c] })), { label: "目標までの不足（斜線）", color: "#fda4af" }, { label: "目標", color: "#e11d48", swatch: "dash" }]}
+      />
+
+      {/* 年間の内訳（項目ごとの金額と目標に占める割合） */}
+      <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 pb-2 pt-5">
+          <div className="text-[15px] font-semibold tracking-tight text-slate-900">{fiscalNo(fy)}期の年間内訳</div>
+          <div className="text-xs text-slate-500">年間目標 <b className="tabular-nums text-slate-900" style={NUM_FONT_STYLE}>{formatManYen(target)}</b></div>
+        </div>
+        <div className="divide-y divide-slate-100 px-5">
+          {rows.map((r) => (
+            <div key={r.label} className="flex items-center gap-3 py-2.5">
+              <span className="flex w-40 shrink-0 items-center gap-2 text-sm text-slate-700">
+                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: COMPOSITION_COLORS[r.label] }} />
+                {r.label}
+              </span>
+              <div className="hidden h-2 flex-1 overflow-hidden rounded-full bg-slate-100 sm:block">
+                <div className="h-full rounded-full" style={{ width: `${Math.min(100, pctOfTarget(r.v))}%`, background: COMPOSITION_COLORS[r.label] }} />
+              </div>
+              <span className="w-14 text-right text-xs tabular-nums text-slate-400">{pctOfTarget(r.v)}%</span>
+              <span className="w-28 text-right text-sm font-semibold tabular-nums text-slate-900" style={NUM_FONT_STYLE}>{formatManYen(r.v)}</span>
+              {r.label === BASE_LABEL ? (
+                editBase ? (
+                  <span className="flex w-40 items-center justify-end gap-1">
+                    <input autoFocus type="number" inputMode="numeric" value={baseInput} onChange={(e) => setBaseInput(e.target.value)} className="w-20 rounded-md border border-slate-300 px-1.5 py-0.5 text-right text-xs" aria-label="制作基礎数字（月・万円）" />
+                    <span className="text-[11px] text-slate-500">万/月</span>
+                    <button
+                      onClick={() => {
+                        const v = Math.round(Number(baseInput) * 10000);
+                        if (Number.isFinite(v) && v >= 0) onChangeBaseMonthly && onChangeBaseMonthly(v);
+                        setEditBase(false);
+                      }}
+                      className="rounded-md bg-slate-900 px-1.5 py-0.5 text-[11px] font-medium text-white"
+                    >
+                      保存
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setBaseInput(String(Math.round(baseMonthly / 10000)));
+                      setEditBase(true);
+                    }}
+                    className="w-40 text-right text-[11px] text-indigo-600 hover:underline"
+                  >
+                    {r.note}・変更
+                  </button>
+                )
+              ) : (
+                <span className="w-40 text-right text-[11px] text-slate-400">ストック売上</span>
+              )}
+            </div>
+          ))}
+          <div className="flex items-center gap-3 py-2.5">
+            <span className="w-40 shrink-0 text-sm font-semibold text-slate-800">基礎数字＋ストック</span>
+            <span className="hidden flex-1 sm:block" />
+            <span className="w-14 text-right text-xs tabular-nums text-slate-400">{pctOfTarget(fixedTotal)}%</span>
+            <span className="w-28 text-right text-sm font-bold tabular-nums text-slate-900" style={NUM_FONT_STYLE}>{formatManYen(fixedTotal)}</span>
+            <span className="w-40" />
+          </div>
+        </div>
+        <div className="m-4 mt-2 grid gap-3 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-700 p-4 text-white sm:grid-cols-3">
+          <div>
+            <div className="text-[11px] text-white/70">営業で必要な売上（年間）</div>
+            <div className="tabular-nums" style={{ ...NUM_FONT_STYLE, fontWeight: 600, fontSize: 28, lineHeight: 1.15 }}>
+              {fmtMan(need)}<span className="ml-0.5 text-sm">万円</span>
+            </div>
+            <div className="text-[11px] text-white/60">目標の{pctOfTarget(need)}%・月平均 {fmtMan(need / 12)}万円</div>
+          </div>
+          <div>
+            <div className="text-[11px] text-white/70">営業の確定済み</div>
+            <div className="tabular-nums" style={{ ...NUM_FONT_STYLE, fontWeight: 600, fontSize: 28, lineHeight: 1.15 }}>
+              {fmtMan(salesDone)}<span className="ml-0.5 text-sm">万円</span>
+            </div>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/15">
+              <div className="h-full rounded-full bg-emerald-400" style={{ width: `${need > 0 ? Math.min(100, (salesDone / need) * 100) : 100}%` }} />
+            </div>
+            <div className="mt-1 text-[11px] text-white/60">必要額の{need > 0 ? Math.round((salesDone / need) * 100) : 100}%</div>
+          </div>
+          <div>
+            <div className="text-[11px] text-white/70">あと営業で売り上げる金額</div>
+            <div className={`tabular-nums ${salesLeft > 0 ? "text-rose-300" : "text-emerald-300"}`} style={{ ...NUM_FONT_STYLE, fontWeight: 600, fontSize: 28, lineHeight: 1.15 }}>
+              {salesLeft > 0 ? fmtMan(salesLeft) : "達成"}{salesLeft > 0 && <span className="ml-0.5 text-sm">万円</span>}
+            </div>
+            <div className="text-[11px] text-white/60">{monthsLeft ? `残り${monthsLeft}か月・月${fmtMan(perMonth)}万円ペース` : "期は終了しています"}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 年別売上：月ごとの確定金額（月次シートの売上 → 前年度売上 → 受注・納品済みの案件 の順で採用）を期または暦年で合計
-function YearlyRevenuePage({ projects, actualOf = () => null, prevOf = () => null, extraMonths = [] }) {
+function YearlyRevenuePage({ projects, actualOf = () => null, prevOf = () => null, extraMonths = [], stocks = [], targetFor, baseMonthly, onChangeBaseMonthly }) {
   const mode = "fiscal"; // 期（8月〜翌7月）で集計
   const isConfirmed = (p) => p.status === "won" || p.status === "delivered";
   const confirmedOf = (list) => list.filter(isConfirmed).reduce((a, p) => a + (Number(p.confirmedAmount) || 0), 0);
@@ -2862,6 +3118,8 @@ function YearlyRevenuePage({ projects, actualOf = () => null, prevOf = () => nul
           ];
         }}
       />
+
+      <YearlyCompositionSection projects={projects} stocks={stocks} targetFor={targetFor} fyList={groups.map((g) => `${g}-08`)} baseMonthly={baseMonthly} onChangeBaseMonthly={onChangeBaseMonthly} />
 
       <SectionCard title={mode === "fiscal" ? "期ごとのサマリー" : "年別サマリー"}>
         <div className="flex flex-col divide-y divide-slate-100">
@@ -3601,6 +3859,8 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
   const undecidedCool = month === currentMonthKey() ? sumOf(undecided.filter((p) => p.status === "active")) : 0;
   const cool = sumOf(open.filter((p) => p.confidence === 1)) + undecidedCool; // 参考見積りは見込み金額に含めない
   const stock = stockOfMonth(month);
+  // ストックのうちAI BUDDY（AI運用・AIO運用）の金額
+  const aiBuddy = stocks.filter((st) => stockGroupOf(st.category) === AI_BUDDY && stockActiveIn(st, month)).reduce((a, st) => a + (Number(st.monthlyAmount) || 0), 0);
   // 月次シートの売上がある月は運用・管理分も含まれているため、ストックを見込みに足さない
   const stockEst = actualOf(month) !== null ? 0 : stock;
   const postponed = projects.reduce((acc, p) => acc + p.history.filter((h) => h.type === "postponed" && h.fromMonth === month).length, 0);
@@ -3789,6 +4049,11 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
                     {lb}
                   </span>
                   {lb === "COOL" && undecidedCool > 0 && <span className="mt-0.5 whitespace-nowrap text-[10px] font-normal leading-tight text-sky-600/80">うち未定 {manN(undecidedCool)}万</span>}
+                  {lb === "ストック" && (
+                    <span className="mt-0.5 whitespace-nowrap text-[10px] font-normal leading-tight text-violet-600/80">
+                      <span className="hidden sm:inline">うち</span>AI BUDDY {manN(aiBuddy)}万<span className="hidden sm:inline">円</span>
+                    </span>
+                  )}
                 </div>
                 <div className="shrink-0 whitespace-nowrap tabular-nums text-[18px] sm:text-[22px]" style={{ fontFamily: "var(--font-num)", fontWeight: 500, lineHeight: 1.1, opacity: v === 0 ? 0.45 : 1 }}>
                   {manN(v)}
@@ -4271,19 +4536,14 @@ function MonthlyTable({ projects, stocks = [], onOpenDetail, target = 0, targetF
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <div className="text-white" style={{ background: "var(--c-hero)", borderRadius: 16, padding: "12px 14px" }}>
-            <div className="text-xs" style={{ color: "rgba(255,255,255,.72)" }}>総額（確定＋見込み）</div>
-            <div className="mt-1 tabular-nums" style={{ ...NUM_FONT, fontWeight: 500, fontSize: 26, lineHeight: 1.1 }}>
-              {manN(r.grand)}<span className="ml-0.5 text-[13px] font-semibold">万円</span>
-            </div>
-          </div>
-          <div className={done ? "bg-emerald-50 text-emerald-700" : "bg-indigo-50 text-indigo-700"} style={{ borderRadius: 16, padding: "12px 14px" }}>
+        <div className={`flex items-center justify-between ${done ? "bg-emerald-50 text-emerald-700" : "bg-indigo-50 text-indigo-700"}`} style={{ borderRadius: 16, padding: "12px 16px" }}>
+          <div>
             <div className="text-xs">目標まであと</div>
             <div className="mt-1 tabular-nums" style={{ ...NUM_FONT, fontWeight: 500, fontSize: 26, lineHeight: 1.1 }}>
               {!r.target ? "—" : done ? "達成" : <>{manN(r.remain)}<span className="ml-0.5 text-[13px] font-semibold">万円</span></>}
             </div>
           </div>
+          {r.target > 0 && <div className="text-right text-[11px] opacity-80">目標 {manN(r.target)}万円<br />{Math.round((r.confirmed / r.target) * 100)}% 達成</div>}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -4454,8 +4714,13 @@ function StackedTrendCard({
   renderDetail = null, // (period) => ReactNode。指定するとグラフの下に月ごとのボタンを出し、選んだ月の詳細を表示
   hideChips = false, // 項目の切り替えチップを出さない
   noTooltip = false, // ホバー時の吹き出しを出さない
+  ghostCats = [], // 斜線で薄く表示する項目（目標までの不足など）。合計の数字には含めない
+  unitLabel = "単位：万円",
+  height = 288,
 }) {
   const [hidden, setHidden] = useState([]);
+  const nowText = () => (typeof nowLabel === "function" ? nowLabel(rangeKey) : nowLabel);
+  const gid = useMemo(() => `stc${Math.random().toString(36).slice(2, 8)}`, []);
   const narrow = useWindowWidth() < 640;
   const [rangeKey, setRangeKey] = useState(() => {
     if (typeof defaultRangeKey === "function") return defaultRangeKey(typeof window !== "undefined" && window.innerWidth < 640);
@@ -4469,12 +4734,13 @@ function StackedTrendCard({
     return list.length ? list : categories;
   })();
   const visibleCats = activeCats.filter((c) => !hidden.includes(c));
-  const sumFor = (pk, cats = visibleCats) => cats.reduce((a, c) => a + (valueOf(pk, c) || 0), 0);
+  const realCats = visibleCats.filter((c) => !ghostCats.includes(c));
+  const sumFor = (pk, cats = realCats) => cats.reduce((a, c) => a + (valueOf(pk, c) || 0), 0);
 
   const data = periods.map((p) => {
     const row = { ...p };
     categories.forEach((c) => (row[c] = hidden.includes(c) ? 0 : (valueOf(p.key, c) || 0) / 10000));
-    row.total = visibleCats.reduce((a, c) => a + row[c], 0);
+    row.total = realCats.reduce((a, c) => a + row[c], 0);
     row.target = (typeof target === "function" ? target(p.key) : target) / 10000 || 0;
     const cv = compare ? compare(p.key) : null;
     row.compare = cv ? cv / 10000 : null;
@@ -4483,7 +4749,10 @@ function StackedTrendCard({
   const current = periods.find((p) => p.isNow) || periods[periods.length - 1];
   const [selectedKey, setSelectedKey] = useState(null);
   const selected = periods.find((p) => p.key === selectedKey) || current;
-  const lastCat = [...visibleCats].reverse().find((c) => data.some((r) => r[c] > 0)) || visibleCats[visibleCats.length - 1];
+  // 一番上の項目（角を丸める）と、合計の数字を出す項目（斜線の項目は除く）
+  const topCat = [...visibleCats].reverse().find((c) => data.some((r) => r[c] > 0)) || visibleCats[visibleCats.length - 1];
+  const lastCat = [...realCats].reverse().find((c) => data.some((r) => r[c] > 0)) || realCats[realCats.length - 1];
+  const focusKey = renderDetail ? selected.key : current && current.isNow ? current.key : null;
   const fmt = (v) => (Math.round(v * 10) / 10).toLocaleString("ja-JP", { maximumFractionDigits: 1 });
   const toggle = (c) => setHidden((h) => (h.includes(c) ? h.filter((x) => x !== c) : [...h, c]));
   const crowded = narrow && periods.length > 6;
@@ -4514,8 +4783,8 @@ function StackedTrendCard({
         )}
         {row.isNow && (
           <g transform={`translate(${x + width / 2}, ${y - (hasDiff ? 46 : 30)})`}>
-            <rect x={-18} y={-9} width={36} height={16} rx={8} fill="#4f46e5" />
-            <text x={0} y={3} textAnchor="middle" style={{ fontSize: 10, fontWeight: 700, fill: "#fff" }}>{nowLabel}</text>
+            <rect x={-19} y={-9} width={38} height={17} rx={8.5} fill="#4f46e5" />
+            <text x={0} y={3.5} textAnchor="middle" style={{ fontSize: 10, fontWeight: 700, fill: "#fff", letterSpacing: ".04em" }}>{nowText()}</text>
           </g>
         )}
         <text
@@ -4539,11 +4808,14 @@ function StackedTrendCard({
     const showLabel = !prev || prev.target !== row.target;
     return (
       <g>
-        <line x1={x - pad} x2={x + width + pad} y1={y} y2={y} stroke="#e11d48" strokeWidth={1.5} strokeDasharray="6 4" />
+        <line x1={x - pad} x2={x + width + pad} y1={y} y2={y} stroke="#e11d48" strokeWidth={2} strokeDasharray="5 4" strokeLinecap="round" opacity={0.9} />
         {showLabel && (
-          <text x={x - pad + 2} y={y - 5} style={{ fontSize: narrow ? 9.5 : 10.5, fontWeight: 700, fill: "#e11d48" }}>
-            目標 {fmt(row.target)}万
-          </text>
+          <g transform={`translate(${x - pad}, ${y - 9})`}>
+            <rect x={0} y={-8} width={narrow ? 66 : 78} height={15} rx={7.5} fill="#fff1f2" stroke="#fecdd3" />
+            <text x={6} y={3} style={{ fontSize: narrow ? 9 : 10, fontWeight: 700, fill: "#e11d48", fontFamily: "var(--font-num)" }}>
+              目標 {fmt(row.target)}万
+            </text>
+          </g>
         )}
       </g>
     );
@@ -4557,7 +4829,7 @@ function StackedTrendCard({
         <div className="mb-1.5 flex items-center justify-between gap-3">
           <span className="font-semibold text-slate-800">{row.fullLabel || row.label}</span>
           {row.isNow ? (
-            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{nowLabel}</span>
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{nowText()}</span>
           ) : row.isFuture ? (
             <span className="text-[10px] text-slate-400">予定</span>
           ) : null}
@@ -4599,7 +4871,7 @@ function StackedTrendCard({
     <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="text-sm font-semibold text-slate-800">{title}</div>
+          <div className="text-[15px] font-semibold tracking-tight text-slate-900">{title}</div>
           {SHOW_HELP_TEXT && note && <div className="mt-0.5 text-xs text-slate-400">{note}</div>}
         </div>
         {ranges.length > 1 && (
@@ -4616,7 +4888,7 @@ function StackedTrendCard({
       {tiles.length > 0 && (
         <div className="mt-4 grid gap-2" style={{ gridTemplateColumns: `repeat(${narrow && tiles.length > 3 ? 2 : tiles.length}, minmax(0, 1fr))` }}>
           {tiles.map((t) => (
-            <div key={t.label} className={`rounded-2xl px-3.5 py-3 ${t.accent ? "bg-slate-900 text-white" : "bg-slate-50"}`}>
+            <div key={t.label} className={`rounded-2xl px-4 py-3.5 ${t.accent ? "bg-gradient-to-br from-slate-900 to-slate-700 text-white shadow-sm" : "border border-slate-100 bg-slate-50/80"}`}>
               <div className={`text-[11px] ${t.accent ? "text-white/70" : "text-slate-500"}`}>{t.label}</div>
               <div className={`mt-0.5 whitespace-nowrap tabular-nums ${t.accent ? "text-white" : t.tone || "text-slate-900"}`} style={{ fontFamily: "var(--font-num)", fontWeight: 600, fontSize: narrow ? 18 : 24, lineHeight: 1.15 }}>
                 {t.value}
@@ -4649,7 +4921,8 @@ function StackedTrendCard({
       </div>
 
       {/* 棒が少ないときは横幅を詰めて中央に寄せる（左右の端に離れないように） */}
-      <div className="mx-auto mt-3 h-72" style={periods.length <= 4 ? { maxWidth: periods.length * 170 + 60 } : undefined}>
+      <div className="mt-4 flex items-center justify-end text-[10px] text-slate-400">{unitLabel}</div>
+      <div className="mx-auto" style={{ height, ...(periods.length <= 4 ? { maxWidth: periods.length * 170 + 60 } : {}) }}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             key={`${rangeKey}-${hidden.join(",")}`}
@@ -4657,7 +4930,28 @@ function StackedTrendCard({
             onClick={(st) => {
               if (renderDetail && st && st.activeTooltipIndex !== undefined && periods[st.activeTooltipIndex]) setSelectedKey(periods[st.activeTooltipIndex].key);
             }} margin={{ top: hasTarget ? 58 : 40, right: 4, left: 0, bottom: 0 }} barCategoryGap={compare && compareMode === "bar" ? "18%" : "22%"} barGap={3}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" strokeOpacity={0.6} />
+            <defs>
+              {categories.map((c, i) => (
+                <linearGradient key={c} id={`${gid}-g${i}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={colors[c]} stopOpacity={1} />
+                  <stop offset="100%" stopColor={colors[c]} stopOpacity={0.82} />
+                </linearGradient>
+              ))}
+              {categories.map((c, i) => (
+                <pattern key={`p${c}`} id={`${gid}-p${i}`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                  <rect width="6" height="6" fill={colors[c]} fillOpacity={0.1} />
+                  <line x1="0" y1="0" x2="0" y2="6" stroke={colors[c]} strokeWidth="2" strokeOpacity={0.45} />
+                </pattern>
+              ))}
+              <linearGradient id={`${gid}-cmp`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#cbd5e1" />
+                <stop offset="100%" stopColor="#e2e8f0" />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#E2E8F0" />
+            {focusKey && data.some((r) => r.key === focusKey) && (
+              <ReferenceArea x1={data.find((r) => r.key === focusKey).label} x2={data.find((r) => r.key === focusKey).label} fill="#eef2ff" fillOpacity={0.7} strokeOpacity={0} ifOverflow="extendDomain" />
+            )}
             <XAxis
               dataKey="label"
               axisLine={false}
@@ -4682,17 +4976,18 @@ function StackedTrendCard({
               }}
             />
             <YAxis
-              tick={{ fontSize: 11, fill: "#94A3B8" }}
+              tick={{ fontSize: 10.5, fill: "#94A3B8", fontFamily: "var(--font-num)" }}
+              tickFormatter={(v) => Number(v).toLocaleString("ja-JP")}
               axisLine={false}
               tickLine={false}
-              width={40}
+              width={44}
               domain={[0, (max) => { const v = max * 1.04 || 1; const step = v > 2000 ? 500 : v > 500 ? 100 : v > 100 ? 50 : 10; return Math.ceil(v / step) * step; }]}
             />
             {!noTooltip && <Tooltip content={<TrendTooltip />} cursor={{ fill: "rgba(148,163,184,.12)", radius: 8 }} />}
             {compare && compareMode === "bar" && (
-              <Bar dataKey="compare" name={compareLabel} fill="#cbd5e1" radius={[5, 5, 0, 0]} maxBarSize={28} isAnimationActive animationDuration={600} onClick={(_, i) => renderDetail && periods[i] && setSelectedKey(periods[i].key)} style={renderDetail ? { cursor: "pointer" } : undefined}>
+              <Bar dataKey="compare" name={compareLabel} fill={`url(#${gid}-cmp)`} radius={[6, 6, 2, 2]} maxBarSize={26} isAnimationActive animationDuration={600} onClick={(_, i) => renderDetail && periods[i] && setSelectedKey(periods[i].key)} style={renderDetail ? { cursor: "pointer" } : undefined}>
                 {data.map((row) => (
-                  <Cell key={row.key} fill={row.isNow ? "#94a3b8" : "#cbd5e1"} />
+                  <Cell key={row.key} fill={row.key === focusKey ? "#94a3b8" : `url(#${gid}-cmp)`} />
                 ))}
               </Bar>
             )}
@@ -4703,16 +4998,19 @@ function StackedTrendCard({
                 stackId="a"
                 onClick={(_, idx) => renderDetail && periods[idx] && setSelectedKey(periods[idx].key)}
                 style={renderDetail ? { cursor: "pointer" } : undefined}
-                fill={colors[c]}
-                radius={c === lastCat ? [6, 6, 0, 0] : [0, 0, 0, 0]}
+                fill={ghostCats.includes(c) ? `url(#${gid}-p${categories.indexOf(c)})` : `url(#${gid}-g${categories.indexOf(c)})`}
+                stroke={ghostCats.includes(c) ? colors[c] : undefined}
+                strokeOpacity={ghostCats.includes(c) ? 0.5 : undefined}
+                strokeDasharray={ghostCats.includes(c) ? "3 3" : undefined}
+                radius={c === topCat ? [7, 7, 0, 0] : [0, 0, 0, 0]}
                 isAnimationActive
                 animationBegin={i * 120}
                 animationDuration={700}
                 animationEasing="ease-out"
-                maxBarSize={72}
+                maxBarSize={compare && compareMode === "bar" ? 30 : 64}
               >
                 {data.map((row) => (
-                  <Cell key={row.key} fillOpacity={row.isFuture ? 0.45 : 1} />
+                  <Cell key={row.key} fillOpacity={ghostCats.includes(c) ? 1 : row.isFuture ? 0.42 : 1} />
                 ))}
                 {c === lastCat && <LabelList content={<TotalLabel />} />}
               </Bar>
@@ -4739,7 +5037,7 @@ function StackedTrendCard({
       {renderDetail && (
         <>
           {/* 各月のボタン（グラフの列にそろえる） */}
-          <div className="mt-1 grid gap-1" style={{ paddingLeft: 40, paddingRight: 4, gridTemplateColumns: `repeat(${periods.length}, minmax(0, 1fr))` }}>
+          <div className="mt-1 grid gap-1" style={{ paddingLeft: 44, paddingRight: 4, gridTemplateColumns: `repeat(${periods.length}, minmax(0, 1fr))` }}>
             {periods.map((p) => {
               const on = p.key === selected.key;
               return (
@@ -5026,9 +5324,13 @@ function StockPage({ stocks, companies, assignees, onAdd, onUpdate, onDelete, on
   const isPlanned = (st) => !isEnded(st) && (!!st.planned || Number(st.monthlyAmount) === 0);
   // 並び：継続中・開始前 → 運用予定 → 契約解除・終了
   const groupOf = (st) => (isEnded(st) ? 2 : isPlanned(st) ? 1 : 0);
-  const activeNow = stocks.filter((st) => stockActiveIn(st, thisMonth) && !isPlanned(st));
+  // 上部の金額は、選んだ月の内容（タブで切り替え）
+  const [selMonth, setSelMonth] = useState(thisMonth);
+  const [selFy, setSelFy] = useState(() => fiscalStart(thisMonth));
+  const selNo = Number(selMonth.slice(5));
+  const activeNow = stocks.filter((st) => stockActiveIn(st, selMonth) && !(st.planned || Number(st.monthlyAmount) === 0));
   const mrr = activeNow.reduce((a, st) => a + st.monthlyAmount, 0);
-  // 区分ごとの今月の金額（売上がない区分も0円で表示する）
+  // 区分ごとの選んだ月の金額（売上がない区分も0円で表示する）
   const byCat = STOCK_GROUPS.map((c) => {
     const list = activeNow.filter((st) => stockGroupOf(st.category) === c);
     return { category: c, count: list.length, amount: list.reduce((a, st) => a + st.monthlyAmount, 0) };
@@ -5048,21 +5350,38 @@ function StockPage({ stocks, companies, assignees, onAdd, onUpdate, onDelete, on
 
   return (
     <div className="flex flex-col gap-5">
+      {/* 月の切り替え（選んだ月の内容が下の金額・件数に反映される） */}
+      <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:flex-row sm:items-center">
+        <FiscalYearPicker value={selFy} onChange={(f) => { setSelFy(f); setSelMonth(fiscalPeriods(f).some((p) => p.key === thisMonth) ? thisMonth : f); }} />
+        <div className="flex flex-wrap gap-1">
+          {fiscalPeriods(selFy).map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setSelMonth(p.key)}
+              className={`min-w-[44px] rounded-lg px-2.5 py-1.5 text-xs font-medium tabular-nums transition-colors ${p.key === selMonth ? "bg-violet-600 text-white shadow-sm" : p.isNow ? "bg-violet-50 text-violet-700 hover:bg-violet-100" : "text-slate-500 hover:bg-slate-100"}`}
+              aria-pressed={p.key === selMonth}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">
-          <div className="text-xs text-slate-500">今月のストック売上</div>
+          <div className="text-xs text-slate-500">{Number(selMonth.slice(0, 4))}年{selNo}月のストック売上{selMonth === thisMonth && <span className="ml-1 rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] text-white">今月</span>}</div>
           <div className="mt-1 text-xl font-semibold text-violet-700">{formatYen(mrr)}</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs text-slate-500">年換算</div>
+          <div className="text-xs text-slate-500">年換算（{selNo}月×12）</div>
           <div className="mt-1 text-xl font-semibold text-slate-800">{formatManYen(mrr * 12)}</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs text-slate-500">継続契約数</div>
+          <div className="text-xs text-slate-500">{selNo}月の契約数</div>
           <div className="mt-1 text-xl font-semibold text-slate-800">{activeNow.length}件</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs text-slate-500">契約社数</div>
+          <div className="text-xs text-slate-500">{selNo}月の契約社数</div>
           <div className="mt-1 text-xl font-semibold text-slate-800">{new Set(activeNow.map((s) => s.clientName)).size}社</div>
         </div>
       </div>
@@ -6673,6 +6992,10 @@ export default function App() {
   const [detailId, setDetailId] = useState(null);
   const monthlyTarget = settings.monthlyTarget !== undefined ? settings.monthlyTarget : 15000000; // 月の目標のデフォルト：1,500万円
   const setMonthlyTargetState = (amount) => updateSettings({ monthlyTarget: amount });
+  const baseMonthly = settings.baseMonthly !== undefined ? settings.baseMonthly : DEFAULT_BASE_MONTHLY; // 制作基礎数字（月）のデフォルト：400万円
+  const setBaseMonthly = (amount) => updateSettings({ baseMonthly: amount });
+  const prevRevenueManual = settings.prevRevenueManual || {}; // 手入力した前年度売上
+  const setPrevRevenueManual = settingSetter("prevRevenueManual");
   const [showTargetEdit, setShowTargetEdit] = useState(false);
   projectsRef.current = projects;
   sourcesRef.current = sheetSources;
@@ -6695,7 +7018,8 @@ export default function App() {
   const baseOf = () => 0; // 制作基礎数字は使わない（売上に加算しない）
   const actualOf = (m) => (actualRevenue[m] !== undefined ? actualRevenue[m] : null);
   // 前年同月の売上：前年の月次シートがあればそれ、なければ売上計画の「前年度売上」
-  const prevOf = (m) => (actualRevenue[m] !== undefined ? actualRevenue[m] : prevRevenue[m] !== undefined ? prevRevenue[m] : null);
+  // 手入力した前年度売上があれば最優先
+  const prevOf = (m) => (prevRevenueManual[m] !== undefined && prevRevenueManual[m] !== null ? prevRevenueManual[m] : actualRevenue[m] !== undefined ? actualRevenue[m] : prevRevenue[m] !== undefined ? prevRevenue[m] : null);
   const targetFor = (m) => (monthTargets[m] !== undefined ? monthTargets[m] : monthlyTarget);
   const companyNames = useMemo(
     () => Array.from(new Set(visibleProjects.map((p) => p.clientName))).sort((a, b) => a.localeCompare(b, "ja")),
@@ -7469,28 +7793,42 @@ export default function App() {
                     </div>
                     {/* HOTの案件をすべて表示し、多いときは枠の中でスクロール */}
                     <div className="relative min-h-0 flex-1">
-                      <div className="-mr-2 flex max-h-[480px] flex-col gap-2 overflow-y-auto pr-2 lg:absolute lg:inset-0 lg:max-h-none">
+                      <div className="-mr-2 flex max-h-[480px] flex-col overflow-y-auto pr-2 lg:absolute lg:inset-0 lg:max-h-none">
                         {spotlight.length === 0 && <div className="text-sm text-slate-400">HOTの案件はありません</div>}
-                        {spotlight.map((p) => {
-                          const cur = p.scheduledMonth === dashMonth;
+                        {/* 受注予定月ごとに見出しを付けて表示（見出しはスクロールしても上に残る） */}
+                        {Array.from(new Set(spotlight.map((p) => p.scheduledMonth))).map((m) => {
+                          const items = spotlight.filter((p) => p.scheduledMonth === m);
+                          const cur = m === dashMonth;
+                          const isThis = m === currentMonthKey();
                           return (
-                            <button
-                              key={p.id}
-                              onClick={() => setDetail(p)}
-                              className={`shrink-0 rounded-2xl border px-3.5 py-2.5 text-left transition-colors ${cur ? "border-rose-200 bg-rose-50/70 hover:border-rose-300" : "border-slate-200 bg-white hover:border-slate-300"}`}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <div className="truncate text-sm font-semibold text-slate-900">{p.clientName}</div>
-                                  <div className="mt-0.5 truncate text-xs text-slate-500">{p.name}</div>
-                                </div>
-                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${cur ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600"}`}>{Number(p.scheduledMonth.slice(5))}月</span>
+                            <section key={m} className="mb-3 last:mb-0">
+                              <div className="sticky top-0 z-10 -mx-0.5 flex items-center gap-2 bg-white px-0.5 pb-1.5 pt-0.5">
+                                <span className={`rounded-lg px-2 py-0.5 text-xs font-bold tabular-nums ${cur ? "bg-rose-600 text-white" : "bg-slate-800 text-white"}`}>
+                                  {Number(m.slice(0, 4))}年{Number(m.slice(5))}月
+                                </span>
+                                {isThis && <span className="rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">今月</span>}
+                                <span className="h-px flex-1 bg-slate-200" />
+                                <span className="text-[11px] tabular-nums text-slate-500">
+                                  {items.length}件・{formatManYen(items.reduce((a, p) => a + (Number(p.estimatedAmount) || 0), 0))}
+                                </span>
                               </div>
-                              <div className="mt-1 flex items-center justify-between">
-                                <span className="tabular-nums text-slate-900" style={{ ...NUM_FONT_STYLE, fontWeight: 600 }}>{formatManYen(p.estimatedAmount)}</span>
-                                {p.assignee && <span className="flex items-center gap-1 text-[11px] text-slate-500"><Avatar name={p.assignee} size={16} />{p.assignee}</span>}
+                              <div className="flex flex-col gap-2">
+                                {items.map((p) => (
+                                  <button
+                                    key={p.id}
+                                    onClick={() => setDetail(p)}
+                                    className={`shrink-0 rounded-2xl border border-l-4 px-3.5 py-2.5 text-left transition-colors ${cur ? "border-rose-200 border-l-rose-500 bg-rose-50/60 hover:border-rose-300" : "border-slate-200 border-l-slate-400 bg-white hover:border-slate-300"}`}
+                                  >
+                                    <div className="truncate text-sm font-semibold text-slate-900">{p.clientName}</div>
+                                    <div className="mt-0.5 truncate text-xs text-slate-500">{p.name}</div>
+                                    <div className="mt-1 flex items-center justify-between">
+                                      <span className="tabular-nums text-slate-900" style={{ ...NUM_FONT_STYLE, fontWeight: 600 }}>{formatManYen(p.estimatedAmount)}</span>
+                                      {p.assignee && <span className="flex items-center gap-1 text-[11px] text-slate-500"><Avatar name={p.assignee} size={16} />{p.assignee}</span>}
+                                    </div>
+                                  </button>
+                                ))}
                               </div>
-                            </button>
+                            </section>
                           );
                         })}
                       </div>
@@ -7605,13 +7943,13 @@ export default function App() {
 
           {view === "yearly" && (
             <div className="mx-auto max-w-6xl">
-              <YearlyRevenuePage projects={datedProjects} actualOf={actualOf} prevOf={prevOf} extraMonths={[...Object.keys(actualRevenue), ...Object.keys(prevRevenue)]} />
+              <YearlyRevenuePage projects={datedProjects} stocks={stocks} targetFor={targetFor} baseMonthly={baseMonthly} onChangeBaseMonthly={setBaseMonthly} actualOf={actualOf} prevOf={prevOf} extraMonths={[...Object.keys(actualRevenue), ...Object.keys(prevRevenue), ...Object.keys(prevRevenueManual)]} />
             </div>
           )}
 
           {view === "monthlyRevenue" && (
             <div className="mx-auto max-w-6xl">
-              <MonthlyRevenuePage projects={datedProjects} monthlyTarget={monthlyTarget} targetFor={targetFor} stocks={stocks} actualOf={actualOf} prevOf={prevOf} />
+              <MonthlyRevenuePage projects={datedProjects} monthlyTarget={monthlyTarget} targetFor={targetFor} stocks={stocks} actualOf={actualOf} prevOf={prevOf} prevManual={prevRevenueManual} onSavePrevManual={(patch) => setPrevRevenueManual((cur) => { const n = { ...(cur || {}) }; Object.entries(patch).forEach(([k, v]) => { if (v === null) delete n[k]; else n[k] = v; }); return n; })} />
             </div>
           )}
 
