@@ -4158,11 +4158,11 @@ function MonthlyTable({ projects, stocks = [], onOpenDetail, target = 0, targetF
             <div className="flex items-center justify-between px-1.5 pb-1.5 pt-0.5">
               <span className="text-xs font-medium text-slate-500">見込み金額</span>
               <span className="whitespace-nowrap tabular-nums text-slate-800" style={{ ...NUM_FONT, fontWeight: 600, fontSize: 16 }}>
-                {manN(r.hot + r.warm + r.cool + r.stockEst)}<span className="ml-0.5 text-[11px]">万円</span>
+                {manN(r.hot + r.warm + r.cool + r.stock)}<span className="ml-0.5 text-[11px]">万円</span>
               </span>
             </div>
             <div className="flex flex-col gap-1">
-              {["hot", "warm", "cool", "stockEst"].map((k) => LIST.find((it) => it.key === k)).map(renderLine)}
+              {["hot", "warm", "cool", "stock"].map((k) => LIST.find((it) => it.key === k)).map(renderLine)}
             </div>
           </div>
         </div>
