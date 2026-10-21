@@ -2865,168 +2865,215 @@ const GAP_LABEL = "目標までの不足";
 const COMPOSITION_COLORS = { [BASE_LABEL]: "#94a3b8", ...STOCK_COLORS, [SALES_LABEL]: "#0f172a", [GAP_LABEL]: "#e11d48" };
 const DEFAULT_BASE_MONTHLY = 4000000; // 制作基礎数字（月）のデフォルト：400万円
 
-function YearlyCompositionSection({ projects, stocks = [], targetFor, fyList, baseMonthly = DEFAULT_BASE_MONTHLY, onChangeBaseMonthly }) {
+function YearlyCompositionSection({ projects, stocks = [], targetFor, baseMonthly = DEFAULT_BASE_MONTHLY, onChangeBaseMonthly }) {
   const curFy = fiscalStart(currentMonthKey());
   const [fy, setFy] = useState(curFy);
   const [editBase, setEditBase] = useState(false);
   const [baseInput, setBaseInput] = useState("");
-  const cats = [BASE_LABEL, ...STOCK_GROUPS, SALES_LABEL, GAP_LABEL];
   const isConfirmed = (p) => p.status === "won" || p.status === "delivered";
   const tgt = (m) => (typeof targetFor === "function" ? targetFor(m) : 0) || 0;
-  const monthsOf = (f) => fiscalPeriods(f).map((p) => p.key);
-  // 月ごとの各項目の金額
-  const monthVal = (m, c) => {
-    if (c === BASE_LABEL) return baseMonthly;
-    if (STOCK_GROUPS.includes(c)) return stocks.filter((st) => stockGroupOf(st.category) === c && stockActiveIn(st, m)).reduce((a, st) => a + (Number(st.monthlyAmount) || 0), 0);
-    if (c === SALES_LABEL) return projects.filter((p) => p.scheduledMonth === m && isConfirmed(p)).reduce((a, p) => a + (Number(p.confirmedAmount) || 0), 0);
-    if (c === GAP_LABEL) return Math.max(0, tgt(m) - cats.filter((x) => x !== GAP_LABEL).reduce((a, x) => a + monthVal(m, x), 0));
-    return 0;
-  };
-  const fyVal = (f, c) => {
-    const ms = monthsOf(f);
-    if (c === GAP_LABEL) {
-      const target = ms.reduce((a, m) => a + tgt(m), 0);
-      const have = cats.filter((x) => x !== GAP_LABEL).reduce((a, x) => a + ms.reduce((b, m) => b + monthVal(m, x), 0), 0);
-      return Math.max(0, target - have);
-    }
-    return ms.reduce((a, m) => a + monthVal(m, c), 0);
-  };
-  const valueOf = (key, c) => (key.startsWith("FY") ? fyVal(key.slice(2), c) : monthVal(key, c));
-
-  // 選んでいる期の数字
-  const ms = monthsOf(fy);
-  const target = ms.reduce((a, m) => a + tgt(m), 0);
-  const baseTotal = fyVal(fy, BASE_LABEL);
-  const stockTotals = STOCK_GROUPS.map((g) => ({ g, v: fyVal(fy, g) }));
-  const stockTotal = stockTotals.reduce((a, x) => a + x.v, 0);
-  const fixedTotal = baseTotal + stockTotal;
-  const need = Math.max(0, target - fixedTotal); // 営業で売り上げる必要がある金額
-  const salesDone = fyVal(fy, SALES_LABEL);
-  const salesLeft = Math.max(0, need - salesDone);
+  const months = fiscalPeriods(fy).map((p) => p.key);
   const nowM = currentMonthKey();
-  const monthsLeft = ms.filter((m) => m >= nowM).length;
-  const perMonth = monthsLeft ? salesLeft / monthsLeft : 0;
-  const pctOfTarget = (v) => (target > 0 ? Math.round((v / target) * 1000) / 10 : 0);
-  const fyPeriods = Array.from(new Set([...fyList, curFy])).sort().map((f) => ({ key: `FY${f}`, label: `${fiscalNo(f)}期`, fullLabel: `${fiscalNo(f)}期（${fiscalLabel(f)}）`, isNow: f === curFy, isFuture: f > curFy }));
-  const rows = [
-    { label: BASE_LABEL, v: baseTotal, note: `月${fmtMan(baseMonthly)}万円 × 12か月` },
-    ...stockTotals.map((x) => ({ label: x.g, v: x.v })),
-  ];
+  const stockOf = (m, g) => stocks.filter((st) => stockGroupOf(st.category) === g && stockActiveIn(st, m)).reduce((a, st) => a + (Number(st.monthlyAmount) || 0), 0);
+  const salesOf = (m) => projects.filter((p) => p.scheduledMonth === m && isConfirmed(p)).reduce((a, p) => a + (Number(p.confirmedAmount) || 0), 0);
+
+  const target = months.reduce((a, m) => a + tgt(m), 0);
+  const baseTotal = baseMonthly * 12;
+  const groups = STOCK_GROUPS.map((g) => ({ g, v: months.reduce((a, m) => a + stockOf(m, g), 0) }));
+  const stockTotal = groups.reduce((a, x) => a + x.v, 0);
+  const fixed = baseTotal + stockTotal;
+  const need = Math.max(0, target - fixed);
+  const done = months.reduce((a, m) => a + salesOf(m), 0);
+  const left = Math.max(0, need - done);
+  const monthsLeft = months.filter((m) => m >= nowM).length;
+  const pace = monthsLeft ? left / monthsLeft : 0;
+  const pct = (v, base = target) => (base > 0 ? Math.round((v / base) * 1000) / 10 : 0);
+  const man = (v) => fmtMan(v);
+  const doneRate = need > 0 ? Math.min(100, (done / need) * 100) : 100;
+  const stripe = (c) => ({ backgroundImage: `repeating-linear-gradient(135deg, ${c}1f 0 8px, ${c}0a 8px 16px)` });
+  const NUM = { fontFamily: "var(--font-num)" };
+
+  // 月ごとの営業必要額（目標 − 基礎数字 − ストック）と確定額
+  const monthRows = months.map((m) => {
+    const st = STOCK_GROUPS.reduce((a, g) => a + stockOf(m, g), 0);
+    const needM = Math.max(0, tgt(m) - baseMonthly - st);
+    const doneM = salesOf(m);
+    return { m, needM, doneM, isNow: m === nowM, isPast: m < nowM };
+  });
+
+  // 円グラフ（営業の進捗）
+  const R = 52;
+  const C = 2 * Math.PI * R;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-[15px] font-semibold tracking-tight text-slate-900">売上の構成と、営業で必要な売上</div>
+    <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+      {/* 見出し */}
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-100 px-6 pb-5 pt-6">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[.18em] text-indigo-500">Revenue Structure</div>
+          <div className="mt-1 text-xl font-bold tracking-tight text-slate-900">{fiscalNo(fy)}期の売上構成</div>
+          <div className="mt-0.5 text-xs text-slate-500">{fiscalLabel(fy)}・目標のうち、基礎数字とストックで決まる分と、営業で売り上げる分</div>
+        </div>
         <FiscalYearPicker value={fy} onChange={setFy} />
       </div>
 
-      <StackedTrendCard
-        key={fy}
-        title={`${fiscalNo(fy)}期の売上構成（基礎数字・ストック・営業）`}
-        categories={cats}
-        colors={COMPOSITION_COLORS}
-        ghostCats={[GAP_LABEL]}
-        ranges={[
-          { key: "fy", label: "期ごと", periods: fyPeriods },
-          { key: "month", label: `${fiscalNo(fy)}期の月別`, periods: fiscalPeriods(fy) },
-        ]}
-        defaultRangeKey="fy"
-        valueOf={valueOf}
-        nowLabel={(rk) => (rk === "fy" ? "今期" : "今月")}
-        hideChips
-        target={(k) => (k.startsWith("FY") ? monthsOf(k.slice(2)).reduce((a, m) => a + tgt(m), 0) : tgt(k))}
-        showDiff={false}
-        summary={() => [
-          { label: `${fiscalNo(fy)}期の売上目標`, value: fmtMan(target), sub: "各月の目標の合計" },
-          { label: "基礎数字＋ストック", value: fmtMan(fixedTotal), sub: `目標の${pctOfTarget(fixedTotal)}%` },
-          { label: "営業で必要な売上", value: fmtMan(need), sub: `目標 − 基礎数字 − ストック`, accent: true },
-          { label: "営業の残り", value: fmtMan(salesLeft), sub: monthsLeft ? `確定 ${fmtMan(salesDone)}万円・残り${monthsLeft}か月で月${fmtMan(perMonth)}万円` : `確定 ${fmtMan(salesDone)}万円`, tone: salesLeft > 0 ? "text-rose-600" : "text-emerald-600" },
-        ]}
-        legend={[...cats.filter((c) => c !== GAP_LABEL).map((c) => ({ label: c, color: COMPOSITION_COLORS[c] })), { label: "目標までの不足（斜線）", color: "#fda4af" }, { label: "目標", color: "#e11d48", swatch: "dash" }]}
-      />
-
-      {/* 年間の内訳（項目ごとの金額と目標に占める割合） */}
-      <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 px-5 pb-2 pt-5">
-          <div className="text-[15px] font-semibold tracking-tight text-slate-900">{fiscalNo(fy)}期の年間内訳</div>
-          <div className="text-xs text-slate-500">年間目標 <b className="tabular-nums text-slate-900" style={NUM_FONT_STYLE}>{formatManYen(target)}</b></div>
-        </div>
-        <div className="divide-y divide-slate-100 px-5">
-          {rows.map((r) => (
-            <div key={r.label} className="flex items-center gap-3 py-2.5">
-              <span className="flex w-40 shrink-0 items-center gap-2 text-sm text-slate-700">
-                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: COMPOSITION_COLORS[r.label] }} />
-                {r.label}
-              </span>
-              <div className="hidden h-2 flex-1 overflow-hidden rounded-full bg-slate-100 sm:block">
-                <div className="h-full rounded-full" style={{ width: `${Math.min(100, pctOfTarget(r.v))}%`, background: COMPOSITION_COLORS[r.label] }} />
+      <div className="flex flex-col gap-6 p-6">
+        {/* 式：年間目標 ＝ 基礎数字 ＋ ストック ＋ 営業で必要 */}
+        <div className="grid items-stretch gap-2 lg:grid-cols-[1.1fr_auto_1fr_auto_1fr_auto_1.25fr]">
+          <div className="rounded-2xl border-2 border-rose-200 bg-rose-50/50 px-5 py-4">
+            <div className="text-xs font-medium text-rose-600">年間の売上目標</div>
+            <div className="mt-1 tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 700, fontSize: 30, lineHeight: 1.05 }}>{man(target)}<span className="ml-1 text-sm font-semibold text-slate-500">万円</span></div>
+            <div className="mt-1 text-[11px] text-slate-500">各月の目標の合計</div>
+          </div>
+          <div className="flex items-center justify-center text-2xl font-light text-slate-300">=</div>
+          <div className="rounded-2xl bg-slate-100 px-5 py-4">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600"><span className="h-2 w-2 rounded-full" style={{ background: COMPOSITION_COLORS[BASE_LABEL] }} />制作基礎数字</div>
+            <div className="mt-1 tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 700, fontSize: 26, lineHeight: 1.05 }}>{man(baseTotal)}<span className="ml-1 text-sm font-semibold text-slate-500">万円</span></div>
+            {editBase ? (
+              <div className="mt-1.5 flex items-center gap-1">
+                <input autoFocus type="number" inputMode="numeric" value={baseInput} onChange={(e) => setBaseInput(e.target.value)} className="w-20 rounded-md border border-slate-300 bg-white px-1.5 py-0.5 text-right text-xs" aria-label="制作基礎数字（月・万円）" />
+                <span className="text-[11px] text-slate-500">万円/月</span>
+                <button onClick={() => { const v = Math.round(Number(baseInput) * 10000); if (Number.isFinite(v) && v >= 0) onChangeBaseMonthly && onChangeBaseMonthly(v); setEditBase(false); }} className="rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-white">保存</button>
               </div>
-              <span className="w-14 text-right text-xs tabular-nums text-slate-400">{pctOfTarget(r.v)}%</span>
-              <span className="w-28 text-right text-sm font-semibold tabular-nums text-slate-900" style={NUM_FONT_STYLE}>{formatManYen(r.v)}</span>
-              {r.label === BASE_LABEL ? (
-                editBase ? (
-                  <span className="flex w-40 items-center justify-end gap-1">
-                    <input autoFocus type="number" inputMode="numeric" value={baseInput} onChange={(e) => setBaseInput(e.target.value)} className="w-20 rounded-md border border-slate-300 px-1.5 py-0.5 text-right text-xs" aria-label="制作基礎数字（月・万円）" />
-                    <span className="text-[11px] text-slate-500">万/月</span>
-                    <button
-                      onClick={() => {
-                        const v = Math.round(Number(baseInput) * 10000);
-                        if (Number.isFinite(v) && v >= 0) onChangeBaseMonthly && onChangeBaseMonthly(v);
-                        setEditBase(false);
-                      }}
-                      className="rounded-md bg-slate-900 px-1.5 py-0.5 text-[11px] font-medium text-white"
-                    >
-                      保存
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setBaseInput(String(Math.round(baseMonthly / 10000)));
-                      setEditBase(true);
-                    }}
-                    className="w-40 text-right text-[11px] text-indigo-600 hover:underline"
-                  >
-                    {r.note}・変更
-                  </button>
-                )
-              ) : (
-                <span className="w-40 text-right text-[11px] text-slate-400">ストック売上</span>
-              )}
-            </div>
-          ))}
-          <div className="flex items-center gap-3 py-2.5">
-            <span className="w-40 shrink-0 text-sm font-semibold text-slate-800">基礎数字＋ストック</span>
-            <span className="hidden flex-1 sm:block" />
-            <span className="w-14 text-right text-xs tabular-nums text-slate-400">{pctOfTarget(fixedTotal)}%</span>
-            <span className="w-28 text-right text-sm font-bold tabular-nums text-slate-900" style={NUM_FONT_STYLE}>{formatManYen(fixedTotal)}</span>
-            <span className="w-40" />
+            ) : (
+              <button onClick={() => { setBaseInput(String(Math.round(baseMonthly / 10000))); setEditBase(true); }} className="mt-1 text-[11px] text-slate-500 hover:text-indigo-600">
+                月{man(baseMonthly)}万円 × 12か月・<span className="text-indigo-600 underline-offset-2 hover:underline">変更</span>
+              </button>
+            )}
+          </div>
+          <div className="flex items-center justify-center text-2xl font-light text-slate-300">+</div>
+          <div className="rounded-2xl bg-violet-50 px-5 py-4">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-violet-700"><Repeat size={12} />ストック売上</div>
+            <div className="mt-1 tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 700, fontSize: 26, lineHeight: 1.05 }}>{man(stockTotal)}<span className="ml-1 text-sm font-semibold text-slate-500">万円</span></div>
+            <div className="mt-1 text-[11px] text-slate-500">うちAI BUDDY {man(groups.find((x) => x.g === AI_BUDDY).v)}万円</div>
+          </div>
+          <div className="flex items-center justify-center text-2xl font-light text-slate-300">+</div>
+          <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 px-5 py-4 text-white shadow-md">
+            <div className="text-xs font-medium text-white/70">営業で必要な売上</div>
+            <div className="mt-1 tabular-nums" style={{ ...NUM, fontWeight: 700, fontSize: 30, lineHeight: 1.05 }}>{man(need)}<span className="ml-1 text-sm font-semibold text-white/60">万円</span></div>
+            <div className="mt-1 text-[11px] text-white/60">目標の{pct(need)}%・月平均 {man(need / 12)}万円</div>
           </div>
         </div>
-        <div className="m-4 mt-2 grid gap-3 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-700 p-4 text-white sm:grid-cols-3">
-          <div>
-            <div className="text-[11px] text-white/70">営業で必要な売上（年間）</div>
-            <div className="tabular-nums" style={{ ...NUM_FONT_STYLE, fontWeight: 600, fontSize: 28, lineHeight: 1.15 }}>
-              {fmtMan(need)}<span className="ml-0.5 text-sm">万円</span>
-            </div>
-            <div className="text-[11px] text-white/60">目標の{pctOfTarget(need)}%・月平均 {fmtMan(need / 12)}万円</div>
+
+        {/* 構成図：目標を100%とした大きなブロック図 */}
+        <div>
+          <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
+            <span className="font-semibold text-slate-700">構成図</span>
+            <span>面積が目標に占める割合です</span>
           </div>
-          <div>
-            <div className="text-[11px] text-white/70">営業の確定済み</div>
-            <div className="tabular-nums" style={{ ...NUM_FONT_STYLE, fontWeight: 600, fontSize: 28, lineHeight: 1.15 }}>
-              {fmtMan(salesDone)}<span className="ml-0.5 text-sm">万円</span>
+          <div className="flex h-[360px] gap-2 max-md:h-auto max-md:flex-col">
+            {/* 基礎数字 */}
+            <div className="relative flex min-w-[130px] flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-slate-200 to-slate-300 p-4 max-md:min-h-[110px]" style={{ flexGrow: Math.max(baseTotal, 1), flexBasis: 0 }}>
+              <div className="text-xs font-semibold text-slate-700">制作基礎数字</div>
+              <div>
+                <div className="tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 700, fontSize: 24 }}>{man(baseTotal)}<span className="ml-0.5 text-xs">万円</span></div>
+                <div className="text-xs font-semibold text-slate-600">{pct(baseTotal)}%</div>
+              </div>
             </div>
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/15">
-              <div className="h-full rounded-full bg-emerald-400" style={{ width: `${need > 0 ? Math.min(100, (salesDone / need) * 100) : 100}%` }} />
+            {/* ストック（区分ごとに縦に分割） */}
+            <div className="flex min-w-[170px] flex-col gap-1.5" style={{ flexGrow: Math.max(stockTotal, 1), flexBasis: 0 }}>
+              {groups.map(({ g, v }) => (
+                <div
+                  key={g}
+                  className="flex min-h-[44px] items-center justify-between gap-2 overflow-hidden rounded-xl px-3 text-white"
+                  style={{ flexGrow: Math.max(v, stockTotal * 0.04, 1), flexBasis: 0, background: `linear-gradient(135deg, ${COMPOSITION_COLORS[g]}, ${COMPOSITION_COLORS[g]}cc)`, opacity: v > 0 ? 1 : 0.35 }}
+                >
+                  <span className="truncate text-[12px] font-semibold">{g}</span>
+                  <span className="shrink-0 text-right tabular-nums" style={NUM}>
+                    <span className="text-[13px] font-bold">{man(v)}</span><span className="text-[10px]">万</span>
+                    <span className="ml-1.5 text-[10px] opacity-80">{pct(v)}%</span>
+                  </span>
+                </div>
+              ))}
             </div>
-            <div className="mt-1 text-[11px] text-white/60">必要額の{need > 0 ? Math.round((salesDone / need) * 100) : 100}%</div>
+            {/* 営業（必要額の中に確定分） */}
+            <div className="relative flex min-w-[200px] flex-col overflow-hidden rounded-2xl border-2 border-dashed border-indigo-200 max-md:min-h-[240px]" style={{ flexGrow: Math.max(need, 1), flexBasis: 0 }}>
+              <div className="relative flex flex-1 flex-col justify-between p-4 max-md:min-h-[140px]" style={{ flexGrow: Math.max(left, 1), ...stripe("#6366f1") }}>
+                <div>
+                  <div className="text-xs font-semibold text-indigo-700">営業で必要な売上</div>
+                  <div className="tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 700, fontSize: 28, lineHeight: 1.15 }}>{man(need)}<span className="ml-0.5 text-xs">万円</span></div>
+                  <div className="text-xs font-semibold text-indigo-600">目標の{pct(need)}%</div>
+                </div>
+                <div className="self-start rounded-xl bg-white/85 px-3 py-2 shadow-sm backdrop-blur">
+                  <div className="text-[11px] text-slate-500">あと</div>
+                  <div className={`tabular-nums ${left > 0 ? "text-rose-600" : "text-emerald-600"}`} style={{ ...NUM, fontWeight: 700, fontSize: 20 }}>{left > 0 ? `${man(left)}万円` : "達成"}</div>
+                </div>
+              </div>
+              <div className="flex min-h-[48px] items-center justify-between bg-slate-900 px-4 text-white" style={{ flexGrow: Math.max(done, need * 0.001), flexBasis: 0 }}>
+                <span className="text-xs font-semibold">確定済み</span>
+                <span className="tabular-nums" style={NUM}><span className="text-base font-bold">{man(done)}</span><span className="text-[10px]">万円</span><span className="ml-1.5 text-[10px] text-white/70">{Math.round(doneRate)}%</span></span>
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="text-[11px] text-white/70">あと営業で売り上げる金額</div>
-            <div className={`tabular-nums ${salesLeft > 0 ? "text-rose-300" : "text-emerald-300"}`} style={{ ...NUM_FONT_STYLE, fontWeight: 600, fontSize: 28, lineHeight: 1.15 }}>
-              {salesLeft > 0 ? fmtMan(salesLeft) : "達成"}{salesLeft > 0 && <span className="ml-0.5 text-sm">万円</span>}
+          {/* 目盛り（目標に占める割合） */}
+          <div className="mt-2 flex h-2 overflow-hidden rounded-full max-md:hidden">
+            <div style={{ flexGrow: Math.max(baseTotal, 1), background: COMPOSITION_COLORS[BASE_LABEL] }} />
+            {groups.map(({ g, v }) => <div key={g} style={{ flexGrow: v, background: COMPOSITION_COLORS[g] }} />)}
+            <div style={{ flexGrow: done, background: "#0f172a" }} />
+            <div style={{ flexGrow: left, ...stripe("#6366f1"), backgroundColor: "#eef2ff" }} />
+          </div>
+          <div className="mt-1 flex justify-between text-[10px] text-slate-400 max-md:hidden">
+            <span>0</span>
+            <span>基礎数字＋ストック {pct(fixed)}%</span>
+            <span>目標 {man(target)}万円</span>
+          </div>
+        </div>
+
+        {/* 営業の進み具合 */}
+        <div className="grid gap-3 md:grid-cols-[auto_1fr_1fr]">
+          <div className="flex items-center gap-4 rounded-2xl bg-slate-50 px-5 py-4">
+            <svg width="128" height="128" viewBox="0 0 128 128" className="shrink-0">
+              <circle cx="64" cy="64" r={R} fill="none" stroke="#e2e8f0" strokeWidth="12" />
+              {doneRate > 0.5 && <circle cx="64" cy="64" r={R} fill="none" stroke="url(#salesRing)" strokeWidth="12" strokeLinecap="round" strokeDasharray={`${(doneRate / 100) * C} ${C}`} transform="rotate(-90 64 64)" />}
+              <defs>
+                <linearGradient id="salesRing" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#6366f1" />
+                  <stop offset="100%" stopColor="#0f172a" />
+                </linearGradient>
+              </defs>
+              <text x="64" y="64" textAnchor="middle" style={{ ...NUM, fontSize: 26, fontWeight: 700, fill: "#0f172a" }}>{Math.round(doneRate)}%</text>
+              <text x="64" y="82" textAnchor="middle" style={{ fontSize: 10, fill: "#64748b" }}>営業の達成率</text>
+            </svg>
+            <div className="text-xs leading-relaxed text-slate-600">
+              営業で必要な<br />
+              <b className="tabular-nums text-slate-900" style={NUM}>{man(need)}万円</b> のうち<br />
+              <b className="tabular-nums text-slate-900" style={NUM}>{man(done)}万円</b> が確定
             </div>
-            <div className="text-[11px] text-white/60">{monthsLeft ? `残り${monthsLeft}か月・月${fmtMan(perMonth)}万円ペース` : "期は終了しています"}</div>
+          </div>
+          <div className="rounded-2xl bg-slate-50 px-5 py-4">
+            <div className="text-xs text-slate-500">あと営業で売り上げる金額</div>
+            <div className={`mt-1 tabular-nums ${left > 0 ? "text-rose-600" : "text-emerald-600"}`} style={{ ...NUM, fontWeight: 700, fontSize: 30, lineHeight: 1.1 }}>{left > 0 ? man(left) : "達成"}{left > 0 && <span className="ml-1 text-sm">万円</span>}</div>
+            <div className="mt-2 text-xs text-slate-500">{monthsLeft ? <>残り<b className="text-slate-800">{monthsLeft}か月</b>・1か月あたり <b className="tabular-nums text-slate-800" style={NUM}>{man(pace)}万円</b></> : "この期は終了しています"}</div>
+          </div>
+          <div className="rounded-2xl bg-slate-50 px-5 py-4">
+            <div className="text-xs text-slate-500">基礎数字＋ストックで決まっている割合</div>
+            <div className="mt-1 tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 700, fontSize: 30, lineHeight: 1.1 }}>{pct(fixed)}<span className="ml-1 text-sm">%</span></div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-gradient-to-r from-slate-400 to-violet-500" style={{ width: `${Math.min(100, pct(fixed))}%` }} /></div>
+            <div className="mt-1.5 text-xs text-slate-500">{man(fixed)}万円 / 目標 {man(target)}万円</div>
+          </div>
+        </div>
+
+        {/* 月ごとの営業必要額 */}
+        <div>
+          <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
+            <span className="font-semibold text-slate-700">月ごとに営業で必要な売上</span>
+            <span>目標 − 基礎数字 − ストック ／ 黒は確定済み</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-12">
+            {monthRows.map((r) => {
+              const rate = r.needM > 0 ? Math.min(100, (r.doneM / r.needM) * 100) : r.doneM > 0 ? 100 : 0;
+              return (
+                <div key={r.m} className={`flex flex-col rounded-xl border p-2.5 ${r.isNow ? "border-indigo-300 bg-indigo-50/60 ring-2 ring-indigo-100" : "border-slate-200 bg-white"} ${r.isPast ? "opacity-80" : ""}`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-semibold ${r.isNow ? "text-indigo-700" : "text-slate-600"}`}>{Number(r.m.slice(5))}月</span>
+                    {r.isNow && <span className="rounded-full bg-indigo-600 px-1.5 text-[9px] font-semibold text-white">今月</span>}
+                  </div>
+                  <div className="mt-1 tabular-nums text-slate-900" style={{ ...NUM, fontWeight: 700, fontSize: 15 }}>{man(r.needM)}<span className="text-[9px] text-slate-500">万</span></div>
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-slate-900" style={{ width: `${rate}%` }} /></div>
+                  <div className="mt-1 text-[10px] tabular-nums text-slate-500">確定 {man(r.doneM)}万</div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -3098,6 +3145,8 @@ function YearlyRevenuePage({ projects, actualOf = () => null, prevOf = () => nul
         })}
       </div>
 
+      <YearlyCompositionSection projects={projects} stocks={stocks} targetFor={targetFor} baseMonthly={baseMonthly} onChangeBaseMonthly={onChangeBaseMonthly} />
+
       <StackedTrendCard
         key={mode}
         title={mode === "fiscal" ? "期ごとの確定金額" : "年ごとの確定金額"}
@@ -3118,8 +3167,6 @@ function YearlyRevenuePage({ projects, actualOf = () => null, prevOf = () => nul
           ];
         }}
       />
-
-      <YearlyCompositionSection projects={projects} stocks={stocks} targetFor={targetFor} fyList={groups.map((g) => `${g}-08`)} baseMonthly={baseMonthly} onChangeBaseMonthly={onChangeBaseMonthly} />
 
       <SectionCard title={mode === "fiscal" ? "期ごとのサマリー" : "年別サマリー"}>
         <div className="flex flex-col divide-y divide-slate-100">
