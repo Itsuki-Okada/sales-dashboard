@@ -181,7 +181,9 @@ export function parsePlanCsv(text, fiscalStartYear) {
 
 export function parseAttackCsv(text, { minUpdated = "2026-08-01" } = {}) {
   const rows = parseCsvRows(text);
-  const hIdx = rows.findIndex((r) => r.some((c) => compact(c) === "ステージ"));
+  // 見出し行：「ステージ」がある行。見出しの「ステージ」が空欄のCSVもあるため、「クライアント名」と「案件名」がある行でも可
+  let hIdx = rows.findIndex((r) => r.some((c) => compact(c) === "ステージ"));
+  if (hIdx === -1) hIdx = rows.findIndex((r) => r.some((c) => compact(c) === "クライアント名") && r.some((c) => compact(c) === "案件名"));
   if (hIdx === -1) return null;
   const header = rows[hIdx].map(compact);
   const col = (...names) => {
@@ -192,7 +194,7 @@ export function parseAttackCsv(text, { minUpdated = "2026-08-01" } = {}) {
     return -1;
   };
   const C = {
-    stage: col("ステージ"),
+    stage: col("ステージ") !== -1 ? col("ステージ") : Math.max(0, col("担当者", "担当", "営業担当") - 1),
     assignee: col("担当者", "担当", "営業担当"),
     scheduled: col("受注予定日", "受注予定"),
     client: col("クライアント名", "会社名", "客先"),
@@ -344,7 +346,7 @@ export function parseSalesFile(text, fiscalStartYear) {
     const p = parsePlanCsv(text, fiscalStartYear);
     if (p) return p;
   }
-  if (/ステージ/.test(text)) {
+  if (/ステージ/.test(text) || (/クライアント名/.test(text) && /案件名/.test(text))) {
     const a = parseAttackCsv(text, { minUpdated: `${fiscalStartYear}-08-01` });
     if (a) return a;
   }
