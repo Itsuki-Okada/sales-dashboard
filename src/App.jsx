@@ -3489,70 +3489,96 @@ function AiBuddyLink() {
 function GoalSimulator({ confirmed, target, items }) {
   const [on, setOn] = useState({});
   const list = items.filter(([, v]) => v > 0);
+  if (!list.length) return null;
   const added = list.reduce((a, [k, v]) => a + (on[k] ? v : 0), 0);
   const nowPct = Math.round((confirmed / target) * 100);
-  const simPct = Math.round(((confirmed + added) / target) * 100);
+  const simTotal = confirmed + added;
+  const simPct = Math.round((simTotal / target) * 100);
   const gain = simPct - nowPct;
-  const reached = confirmed + added >= target;
+  const reached = simTotal >= target;
   const anyOn = list.some(([k]) => on[k]);
-  const level = reached ? "目標達成！" : simPct >= 80 ? "目標まであと少し！" : simPct >= 50 ? "折り返し地点を通過" : "まだまだこれから";
-  const barMax = Math.max(100, simPct);
-  if (!list.length) return null;
+  const level = reached ? "目標達成！" : simPct >= 80 ? "目標まであと少し" : simPct >= 50 ? "折り返し地点を通過" : "まだまだこれから";
+  const man = (v) => Math.round(v / 10000).toLocaleString("ja-JP");
+  // バーは目標（100%）を基準に、超えた分も見えるよう最大120%まで
+  const scale = Math.max(100, Math.min(simPct, 120));
+  const w = (p) => `${(Math.min(p, scale) / scale) * 100}%`;
+  const confPct = (confirmed / target) * 100;
+  const simRaw = (simTotal / target) * 100;
+  const tone = reached && anyOn ? "#059669" : "#4f46e5";
   return (
-    <div className={`rounded-2xl border p-3.5 transition-colors ${reached && anyOn ? "border-emerald-200 bg-emerald-50/60" : "border-slate-200 bg-slate-50/60"}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div>
+      <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
           <Sparkles size={14} className="text-indigo-500" />
           受注シミュレーション
-          <span className="font-normal text-slate-400">タップで「受注した」ことにする</span>
+          <span className="hidden font-normal text-slate-400 sm:inline">受注したら何％になる？ 見込みを選んでください</span>
         </div>
-        {anyOn && (
-          <button onClick={() => setOn({})} className="text-[11px] font-medium text-slate-400 hover:text-slate-600">リセット</button>
-        )}
+        <button onClick={() => setOn({})} disabled={!anyOn} className="rounded-md px-2 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-0">
+          リセット
+        </button>
       </div>
-      <div className="mt-2.5 flex flex-wrap gap-1.5">
-        {list.map(([k, v, color]) => {
-          const active = !!on[k];
-          return (
-            <button
-              key={k}
-              onClick={() => setOn((o) => ({ ...o, [k]: !o[k] }))}
-              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 ${active ? "text-white shadow-sm" : "bg-white text-slate-600 hover:bg-slate-50"}`}
-              style={active ? { background: color, borderColor: color } : { borderColor: "#e2e8f0" }}
-              aria-pressed={active}
-            >
-              {active ? <CheckCircle2 size={13} /> : <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />}
-              {k}が受注
-              <span className={`tabular-nums ${active ? "text-white/85" : "text-slate-400"}`}>+{Math.round(v / 10000).toLocaleString("ja-JP")}万</span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="mt-3 flex items-end justify-between gap-3">
-        <div>
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,180px)_1fr] sm:items-center">
+        {/* 結果 */}
+        <div className={`rounded-2xl px-4 py-3 transition-colors duration-300 ${reached && anyOn ? "bg-emerald-50" : "bg-slate-50"}`}>
           <div className="text-[11px] text-slate-500">{anyOn ? "受注した場合の達成率" : "今の達成率"}</div>
-          <div className="flex items-baseline gap-2">
-            <span className={`tabular-nums transition-colors ${reached && anyOn ? "text-emerald-600" : "text-slate-900"}`} style={{ fontFamily: "var(--font-num)", fontWeight: 600, fontSize: 30, lineHeight: 1.1 }}>
+          <div className="mt-0.5 flex items-baseline gap-1.5">
+            <span className="tabular-nums transition-colors duration-300" style={{ fontFamily: "var(--font-num)", fontWeight: 600, fontSize: 34, lineHeight: 1, color: anyOn ? tone : "var(--c-ink)" }}>
               {anyOn ? simPct : nowPct}
-              <span className="text-base">%</span>
             </span>
-            {anyOn && gain > 0 && <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white">+{gain}pt</span>}
+            <span className="text-sm font-semibold text-slate-500">%</span>
+            {anyOn && gain > 0 && <span className="ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white" style={{ background: tone }}>+{gain}pt</span>}
+          </div>
+          <div className={`mt-2 text-[11px] font-semibold leading-snug ${anyOn ? (reached ? "text-emerald-700" : "text-indigo-700") : "text-slate-400"}`}>
+            {anyOn && (
+              <div className="flex items-center gap-1">
+                {reached && <Trophy size={13} />}
+                {level}
+              </div>
+            )}
+            <div className={anyOn ? "font-medium text-slate-500" : ""}>
+              {reached && anyOn ? `目標を${man(simTotal - target)}万円上回る` : `目標まであと${man(Math.max(0, target - (anyOn ? simTotal : confirmed)))}万円`}
+            </div>
           </div>
         </div>
-        {anyOn && (
-          <div className={`flex items-center gap-1 text-right text-xs font-semibold ${reached ? "text-emerald-600" : "text-indigo-700"}`}>
-            {reached && <Trophy size={16} />}
-            {reached ? `${level}（+${Math.round((confirmed + added - target) / 10000).toLocaleString("ja-JP")}万円）` : `${level}・あと${Math.round((target - confirmed - added) / 10000).toLocaleString("ja-JP")}万円`}
+        {/* 選択ボタンとバー */}
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+            {list.map(([k, v, color]) => {
+              const active = !!on[k];
+              return (
+                <button
+                  key={k}
+                  onClick={() => setOn((o) => ({ ...o, [k]: !o[k] }))}
+                  aria-pressed={active}
+                  className={`flex flex-col items-start rounded-xl border px-3 py-2 text-left transition-all duration-150 active:scale-[.97] ${active ? "text-white shadow-sm" : "bg-white hover:bg-slate-50"}`}
+                  style={active ? { background: color, borderColor: color } : { borderColor: "#e2e8f0" }}
+                >
+                  <span className={`flex w-full items-center gap-1.5 text-[11px] font-semibold ${active ? "text-white" : "text-slate-600"}`}>
+                    {active ? <CheckCircle2 size={12} /> : <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />}
+                    {k}
+                  </span>
+                  <span className={`mt-0.5 tabular-nums ${active ? "text-white" : "text-slate-800"}`} style={{ fontFamily: "var(--font-num)", fontWeight: 600, fontSize: 16 }}>
+                    +{man(v)}<span className="ml-0.5 text-[10px]">万円</span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        )}
-      </div>
-      <div className="relative mt-2 h-2.5 rounded-full bg-white ring-1 ring-inset ring-slate-200">
-        <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-600" style={{ width: `${(Math.min(confirmed / target * 100, barMax) / barMax) * 100}%` }} />
-        <div
-          className="absolute inset-y-0 rounded-r-full transition-all duration-500 ease-out"
-          style={{ left: `${(Math.min((confirmed / target) * 100, barMax) / barMax) * 100}%`, width: `${((Math.max(0, ((confirmed + added) / target) * 100 - (confirmed / target) * 100)) / barMax) * 100}%`, background: reached ? "#10b981" : "#6366f1", opacity: 0.85 }}
-        />
-        <div className="absolute -bottom-1 -top-1 w-[2px] rounded bg-rose-600" style={{ left: `${(100 / barMax) * 100}%` }} title="目標" />
+          <div>
+            <div className="relative h-2.5 rounded-full" style={{ background: "var(--c-track)" }}>
+              <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-600" style={{ width: w(confPct) }} />
+              <div
+                className="absolute inset-y-0 rounded-r-full transition-all duration-500 ease-out"
+                style={{ left: w(confPct), width: `calc(${w(simRaw)} - ${w(confPct)})`, background: tone, opacity: 0.75 }}
+              />
+              <div className="absolute -bottom-1 -top-1 w-[2px] rounded bg-rose-600" style={{ left: w(100) }} />
+            </div>
+            <div className="mt-1 flex justify-between text-[10px] text-slate-400">
+              <span>0%</span>
+              <span className="text-rose-500" style={{ marginRight: scale > 100 ? `${100 - (100 / scale) * 100}%` : 0 }}>目標 100%</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -3717,9 +3743,9 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
                 {target <= 0 ? "—" : remain <= 0 ? "達成" : <>あと {manN(remain)}<span className="ml-0.5 text-xs font-semibold">万円</span></>}
               </div>
               {target > 0 && (
-                <div className={`mt-0.5 text-xs font-semibold tabular-nums ${remain <= 0 ? "text-emerald-600" : "text-slate-500"}`}>
-                  目標の{pct}%達成
-                </div>
+                <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${remain <= 0 ? "bg-emerald-50 text-emerald-700" : "bg-indigo-50 text-indigo-700"}`}>
+                  {pct}% 達成
+                </span>
               )}
             </div>
           </div>
@@ -3756,25 +3782,30 @@ function DashboardHero({ month, projects, stocks, target, onEditTarget, onChange
 
           <div className="grid grid-cols-2 gap-2.5">
             {tiles.map(([lb, v, dot, cls]) => (
-              <div key={lb} className={`flex items-center justify-between rounded-2xl px-4 py-3 ${cls}`}>
-                <div className="flex flex-col text-xs font-medium text-slate-600">
-                  <span className="flex items-center gap-1.5">
+              <div key={lb} className={`flex items-center justify-between gap-2 rounded-2xl px-3 py-3 sm:px-4 ${cls}`}>
+                <div className="flex min-w-0 flex-col text-xs font-medium text-slate-600">
+                  <span className="flex items-center gap-1.5 whitespace-nowrap">
                     <span className="inline-block h-2 w-2 rounded-full" style={{ background: dot }} />
                     {lb}
                   </span>
-                  {lb === "COOL" && undecidedCool > 0 && <span className="mt-0.5 text-[10px] font-normal text-sky-600/80">うち受注月未定 {manN(undecidedCool)}万</span>}
+                  {lb === "COOL" && undecidedCool > 0 && <span className="mt-0.5 whitespace-nowrap text-[10px] font-normal leading-tight text-sky-600/80">うち未定 {manN(undecidedCool)}万</span>}
                 </div>
-                <div className="tabular-nums" style={{ ...numStyle(22), opacity: v === 0 ? 0.45 : 1 }}>
+                <div className="shrink-0 whitespace-nowrap tabular-nums text-[18px] sm:text-[22px]" style={{ fontFamily: "var(--font-num)", fontWeight: 500, lineHeight: 1.1, opacity: v === 0 ? 0.45 : 1 }}>
                   {manN(v)}
                   <span className="ml-0.5 text-[11px] font-semibold">万円</span>
                 </div>
               </div>
             ))}
           </div>
-
-          {target > 0 && <GoalSimulator key={month} confirmed={confirmed} target={target} items={[["HOT", hot, "#e11d48"], ["WARM", warm, "#d97706"], ["COOL", cool, "#0284c7"], ["ストック", stockEst, "#7c3aed"]]} />}
         </div>
       </div>
+
+      {/* 受注シミュレーション */}
+      {target > 0 && (
+        <div className="border-t border-slate-100 px-5 py-4 sm:px-6">
+          <GoalSimulator key={month} confirmed={confirmed} target={target} items={[["HOT", hot, "#e11d48"], ["WARM", warm, "#d97706"], ["COOL", cool, "#0284c7"], ["ストック", stockEst, "#7c3aed"]]} />
+        </div>
+      )}
 
       {/* 下段：期（8月〜翌年7月）の確定金額 */}
       <div className="border-t border-slate-100 px-5 py-4 sm:px-6">
@@ -6718,10 +6749,10 @@ export default function App() {
   );
   const thisMonthCounts = computeCounts(thisMonthList);
 
-  // 注目案件：選んでいる月のHOT案件をすべて（金額の大きい順）
+  // 注目案件：進行中のHOT案件をすべて（受注予定月の早い順・同じ月は金額の大きい順）
   const spotlight = boardProjects
-    .filter((p) => p.scheduledMonth === dashMonth && p.confidence === 3 && p.status === "active")
-    .sort((a, b) => (Number(b.estimatedAmount) || 0) - (Number(a.estimatedAmount) || 0));
+    .filter((p) => p.confidence === 3 && p.status === "active")
+    .sort((a, b) => (a.scheduledMonth < b.scheduledMonth ? -1 : a.scheduledMonth > b.scheduledMonth ? 1 : (Number(b.estimatedAmount) || 0) - (Number(a.estimatedAmount) || 0)));
   const overallKpi = computeCounts(boardProjects);
   const dashMonthChoices = Array.from(new Set([...monthOptions, currentMonthKey(), dashMonth])).sort();
 
@@ -7429,30 +7460,40 @@ export default function App() {
                     onOpenDetail={setDetail}
                     onGoToVisits={() => setView("visits")}
                   />
-                  <div className="flex min-h-0 flex-1 flex-col rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex min-h-[360px] flex-1 flex-col rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
                       注目案件 <ConfidenceStars value={3} />
-                      <span className="font-normal text-slate-400">{Number(dashMonth.slice(5))}月</span>
-                      {spotlight.length > 0 && (
-                        <span className="ml-auto text-xs font-normal text-slate-500">
-                          {spotlight.length}件・{formatManYen(spotlight.reduce((a, p) => a + (Number(p.estimatedAmount) || 0), 0))}
-                        </span>
-                      )}
+                      <span className="ml-auto text-xs font-normal text-slate-500">
+                        全{spotlight.length}件{spotlight.length > 0 && `・${formatManYen(spotlight.reduce((a, p) => a + (Number(p.estimatedAmount) || 0), 0))}`}
+                      </span>
                     </div>
-                    {/* 件数が多いときは枠の中でスクロール */}
-                    <div className="-mr-2 flex max-h-[560px] flex-col gap-2.5 overflow-y-auto pr-2">
-                      {spotlight.length === 0 && <div className="text-sm text-slate-400">この月の注目案件はありません</div>}
-                      {spotlight.map((p) => (
-                        <button
-                          key={p.id}
-                          onClick={() => setDetail(p)}
-                          className="shrink-0 rounded-2xl border border-amber-200 bg-amber-50/60 px-3.5 py-3 text-left hover:border-amber-300"
-                        >
-                          <div className="text-sm font-semibold text-slate-900">{p.clientName}</div>
-                          <div className="mt-0.5 text-xs text-slate-500">{p.name}・{p.category}</div>
-                          <div className="mt-1 tabular-nums text-slate-800" style={{ ...NUM_FONT_STYLE, fontWeight: 600 }}>{formatManYen(p.estimatedAmount)}</div>
-                        </button>
-                      ))}
+                    {/* HOTの案件をすべて表示し、多いときは枠の中でスクロール */}
+                    <div className="relative min-h-0 flex-1">
+                      <div className="-mr-2 flex max-h-[480px] flex-col gap-2 overflow-y-auto pr-2 lg:absolute lg:inset-0 lg:max-h-none">
+                        {spotlight.length === 0 && <div className="text-sm text-slate-400">HOTの案件はありません</div>}
+                        {spotlight.map((p) => {
+                          const cur = p.scheduledMonth === dashMonth;
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => setDetail(p)}
+                              className={`shrink-0 rounded-2xl border px-3.5 py-2.5 text-left transition-colors ${cur ? "border-rose-200 bg-rose-50/70 hover:border-rose-300" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-semibold text-slate-900">{p.clientName}</div>
+                                  <div className="mt-0.5 truncate text-xs text-slate-500">{p.name}</div>
+                                </div>
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${cur ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600"}`}>{Number(p.scheduledMonth.slice(5))}月</span>
+                              </div>
+                              <div className="mt-1 flex items-center justify-between">
+                                <span className="tabular-nums text-slate-900" style={{ ...NUM_FONT_STYLE, fontWeight: 600 }}>{formatManYen(p.estimatedAmount)}</span>
+                                {p.assignee && <span className="flex items-center gap-1 text-[11px] text-slate-500"><Avatar name={p.assignee} size={16} />{p.assignee}</span>}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
